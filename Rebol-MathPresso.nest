@@ -23,6 +23,11 @@ define: USE_TRACES
 	define: DISABLE_MANUAL_TARGET_ORDER_BUILD_WARNING
 ]
 
+#if Posix? [
+	cppflag: "-std=c++11"
+	lflag:   "-lstdc++"
+]
+
 target-x86: [
 	arch: x86
 	#if Windows? [ defines: [ TO_WIN32 _WIN32 ] ]
@@ -80,10 +85,10 @@ eggs: [
 			name: %static-lib-x64
 			arch: x64
 			cmd %build/_static/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
-			cmd %build/_static/ {msbuild blend2d.sln /p:Configuration=Release /p:Platform=x64}
+			cmd %build/_static/ {msbuild mathpresso.sln /p:Configuration=Release /p:Platform=x64}
 		]
 		"Rebol/MathPresso extension - x64" [
-			name: %blend2d-windows-x64
+			name: %mathpresso-windows-x64
 			:r3-extension
 			:target-x64
 			upx: on
