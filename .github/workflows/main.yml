@@ -19,6 +19,9 @@ jobs:
     - name: Install Siskin Builder
       uses: oldes/install-siskin@v0.7.1
 
+    - name: Build 32bit MathPresso static library
+      run: ./siskin Rebol-MathPresso.nest static-lib-x86
+
     - name: Build 32bit Rebol/MathPresso extension
       run: ./siskin Rebol-MathPresso.nest --msvc mathpresso-windows-x86
 
