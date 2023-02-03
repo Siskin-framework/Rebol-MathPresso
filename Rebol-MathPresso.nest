@@ -92,7 +92,7 @@ eggs: [
 			:target-x64
 			upx: on
 			defines:  MATHPRESSO_STATIC
-			libraries: [%build/_static/Release/ %mathpresso]
+			libraries: [%build/_static/Release/mathpresso]
 		]
 	]
 
