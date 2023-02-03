@@ -11,9 +11,6 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 
-extern REBCNT Handle_MPExpression;
-extern REBCNT Handle_MPContext;
-
 #define COMMAND extern "C" int
 
 #define FRM_IS_HANDLE(n, t)     (RXA_TYPE(frm,n) == RXT_HANDLE && RXA_HANDLE_TYPE(frm, n) == t)
@@ -25,21 +22,21 @@ extern REBCNT Handle_MPContext;
 #define ARG_Index(n)            RXA_INDEX(frm, n)
 
 static char* err_buff[255]; // temporary buffer used to pass an exception messages to Rebol side
-#define RETURN_ERROR(err) \
+#define RETURN_ERROR(err)                    \
 	snprintf((char*)err_buff, 254,"%s", err);\
-	RXA_SERIES(frm, 1) = (void*)err_buff;\
+	RXA_SERIES(frm, 1) = (void*)err_buff;    \
 	return RXR_ERROR
 
-#define RETURN_HANDLE(hob)                 \
-	RXA_HANDLE(frm, 1)       = hob;        \
-	RXA_HANDLE_TYPE(frm, 1)  = hob->sym;   \
-	RXA_HANDLE_FLAGS(frm, 1) = hob->flags; \
-	RXA_TYPE(frm, 1) = RXT_HANDLE;         \
+#define RETURN_HANDLE(hob)                   \
+	RXA_HANDLE(frm, 1)       = hob;          \
+	RXA_HANDLE_TYPE(frm, 1)  = hob->sym;     \
+	RXA_HANDLE_FLAGS(frm, 1) = hob->flags;   \
+	RXA_TYPE(frm, 1) = RXT_HANDLE;           \
 	return RXR_VALUE
 
-#define RETURN_DOUBLE(d)                   \
-	RXA_TYPE(frm, 1) = RXT_DECIMAL;        \
-	RXA_DEC64(frm, 1) = (d);               \
+#define RETURN_DOUBLE(d)                     \
+	RXA_TYPE(frm, 1) = RXT_DECIMAL;          \
+	RXA_DEC64(frm, 1) = (d);                 \
 	return RXR_VALUE
 
 

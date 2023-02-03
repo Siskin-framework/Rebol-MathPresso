@@ -9,9 +9,8 @@ github: @mathpresso
 compiler: gcc
 needs:    cmake
 version:  0.1.0
-;strip: on
 
-define: USE_TRACES
+;define: USE_TRACES
 
 #if Windows? [ define: TO_WINDOWS define: _CRT_SECURE_NO_WARNINGS upx: on needs: msbuild]
 #if macOS?   [ define: TO_OSX     define: HAS_BOOL]
@@ -23,10 +22,10 @@ define: USE_TRACES
 	define: DISABLE_MANUAL_TARGET_ORDER_BUILD_WARNING
 ]
 
-#if Posix? [
-	cppflag: "-std=c++11"
-	lflag:   "-lstdc++"
-]
+;#if Posix? [
+;	cppflag: "-std=c++11"
+;	lflag:   "-lstdc++"
+;]
 
 target-x86: [
 	arch: x86
@@ -65,7 +64,7 @@ r3-extension: [
 		%mathpresso-command.cpp
 	]
 	defines: ENDIAN_LITTLE
-	cflags:  -fpermissive
+	;cppflags: [fpermissive]
 	flags:   shared
 
 	#if Posix? [
@@ -93,7 +92,7 @@ eggs: [
 			:target-x64
 			upx: on
 			defines:  MATHPRESSO_STATIC
-			libraries: [%build/_static/Release/mathpresso]
+			libraries: [%build/_static/Release/ %mathpresso]
 		]
 	]
 

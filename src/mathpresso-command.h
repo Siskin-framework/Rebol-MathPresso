@@ -21,6 +21,9 @@
 extern u32* math_cmd_words;
 extern u32* math_arg_words;
 
+extern REBCNT Handle_MPExpression;
+extern REBCNT Handle_MPContext;
+
 
 typedef struct MPExpression_t {
 	void* expression;  // compiled mathpresso::Expression
