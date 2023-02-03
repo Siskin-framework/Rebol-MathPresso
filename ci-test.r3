@@ -33,3 +33,34 @@ expr2: mp/compile :ctx {
     result=round(y*amplitude)/100
 }
 loop 31 [ probe mp/eval :expr2 :data ]
+
+print-horizontal-line
+print as-yellow "Performance test (comparing naive Rebol version with compiled expression)"
+
+rebol-version: function[data][
+    ;; It is not exact version like expr2, because
+    ;; the vector is not updated on each step!
+    x: data/1
+    loop 1000 [
+        y: (sin x) + (cos x / 2)
+        x: x + data/3
+        data/5: (round (y * data/4)) / 100
+    ]
+    ;; update the vector with the final state
+    data/1: x
+    data/2: y
+    ;; return result as the final value
+    data/5
+]
+mathp-version: function[data][
+    loop 1000 [
+        mp/eval :expr2 :data
+    ]
+]
+data1: #[double! [0 0 0.1 10000 0]]
+data2: #[double! [0 0 0.1 10000 0]]
+
+profile [[mathp-version data1][rebol-version data2]]
+? data1
+? data2
+probe equal? data1 data2
