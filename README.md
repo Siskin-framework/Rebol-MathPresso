@@ -22,8 +22,10 @@ expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude)/100"
 ;; To evaluate the expression, we need to provide a vector containing double values of count
 ;; eaqual or greater than number of variables used to create the evaluation context (4 in this case)
 data: #[double! [0 0 0 10000 0]] ; used in the expression like x, y, step, amplitude and result values
+
 ;; initialize the step onput value using Rebol only 
 data/3: pi / 30
+
 ;; Evaluate expression (preferably multiple times)
 loop 31 [ probe mp/eval :expr :data ]
 
@@ -35,7 +37,7 @@ expr2: mp/compile :ctx "y=sin(x)+cos(x/2); x=x+step; result=round(y*amplitude)/1
 loop 31 [ probe mp/eval :expr2 :data ]
 ```
 
-Feel free to let me know if something could be improved.
+Feel free to [let me know](https://gitter.im/rebol3/community) if something could be improved.
 
 ## Extension commands:
 
