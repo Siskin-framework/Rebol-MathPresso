@@ -1,0 +1,138 @@
+;-    .-.                                                                       
+;-   /'v'\   SISKIN-Builder 3.9.0 project file                                  
+;-  (/uOu\)  https://github.com/Siskin-framework/Builder/                       
+;-===="="=======================================================================
+
+github: @asmjit
+github: @mathpresso
+
+compiler: gcc
+needs:    cmake
+version:  0.1.0
+;strip: on
+
+define: USE_TRACES
+
+#if Windows? [ define: TO_WINDOWS define: _CRT_SECURE_NO_WARNINGS upx: on needs: msbuild]
+#if macOS?   [ define: TO_OSX     define: HAS_BOOL]
+#if Linux?   [ define: TO_LINUX ]
+
+#if macOS? [
+	sign: on
+	entitlements: %Entitlements.plist
+	define: DISABLE_MANUAL_TARGET_ORDER_BUILD_WARNING
+]
+
+target-x86: [
+	arch: x86
+	#if Windows? [ defines: [ TO_WIN32 _WIN32 ] ]
+	#if Linux?   [ defines: [ TO_LINUX_X86    ] ]
+]
+target-x64: [
+	arch: x64
+	defines: [
+		_FILE_OFFSET_BITS=64
+		__LP64__ ; has long (integer) 64 bits
+	]
+	#if Windows? [ defines: [ TO_WIN32_X64 _WIN32 ] ]
+	#if Linux?   [ defines: [ TO_LINUX_X64        ] ]
+	#if macOS?   [ defines: [ TO_OSX_X64          ] flags: ["-arch x86_64"] ]
+]
+
+target-arm64: [
+	arch: arm64
+	;flags: ["-arch arm64"]
+	flags: "-target arm64-apple-darwin"
+	define: _FILE_OFFSET_BITS=64
+	define: __LP64__ ; has long (integer) 64 bits
+	define: __arm64__
+	define: TO_OSX_X64
+]
+;----------------------------------------------------------------
+
+r3-extension: [
+	optimize: 3
+	source:  %src/
+	include: %mathpresso/src/mathpresso/
+	files: only [
+		%mathpresso-rebol-extension.c
+		%mathpresso-commands-table.c
+		%mathpresso-command.cpp
+	]
+	defines: ENDIAN_LITTLE
+	cflags:  -fpermissive
+	flags:   shared
+
+	#if Posix? [
+		cflags: [-fPIC -pthread ]
+		libraries: [%pthread]
+	]
+	;- generate main extension header --------------------------------
+	do %src/mathpresso-rebol-extension.r3
+]
+
+
+
+
+eggs: [
+	#if Windows? [
+		"Make MathPresso static library (cmake) - x64" [
+			name: %static-lib-x64
+			arch: x64
+			cmd %build/_static/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
+			cmd %build/_static/ {msbuild blend2d.sln /p:Configuration=Release /p:Platform=x64}
+		]
+		"Rebol/MathPresso extension - x64" [
+			name: %blend2d-windows-x64
+			:r3-extension
+			:target-x64
+			upx: on
+			defines:  MATHPRESSO_STATIC
+			libraries: [%build/_static/Release/mathpresso]
+		]
+	]
+
+
+	#if macOS? [
+		"Make MathPresso static library (cmake) - x64" [
+			name: %static-lib-x64
+			arch: x64
+			cmd %build/_static_x64/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_OSX_SYSROOT=macosx -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9"
+			cmd %build/_static_x64/ {cmake --build .}
+		]
+		;@@ Note: AsmJit now works only on X86 and X64 architectures
+		;"Make Mathpresso static library (cmake) - arm64" [
+		;	arch: arm64
+		;	cmd %_static_arm64/ {cmake ../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_OSX_SYSROOT=macosx -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF }
+		;	cmd %_static_arm64/ {cmake --build .}
+		;]
+		"Rebol/MathPresso extension - x64" [
+			name: %mathpresso-macos-x64
+			:r3-extension
+			:target-x64
+			compiler: clang
+			lflags:   [-dynamiclib]
+			flag:     -mmacosx-version-min=10.9 
+			defines:  MATHPRESSO_STATIC
+			libraries: [%stdc++ %build/_static_x64/ %mathpresso]
+		]
+	]
+
+
+	#if Linux? [
+		"Make 64bit MathPresso static library" [
+			name: %static-lib-x64
+			arch: x64
+			cmd %build/_static_linux/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release"
+			cmd %build/_static_linux/ {cmake --build .}
+		]
+		"Rebol/MathPresso 64bit extension" [
+			name: %mathpresso-linux-x64
+			:r3-extension
+			:target-x64
+			compiler: clang
+			defines:  MATHPRESSO_STATIC
+			libraries: [%stdc++ %build/_static_linux/ %mathpresso]
+		]
+	]
+]

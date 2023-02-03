@@ -1,0 +1,105 @@
+name: 'Rebol-MathPresso CI'
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install Siskin Builder
+      uses: oldes/install-siskin@v0.7.1
+
+#    - name: Build 32bit Rebol/MathPresso extension
+#      run: ./siskin Rebol-MathPresso.nest --msvc mathpresso-windows-x86
+#
+#    - name: Prepare 32bit Rebol/MathPresso extension
+#      run:  MOVE ./msvc/Release-Win32/mathpresso-windows-x86.dll ./mathpresso-windows-x86.rebx
+
+    - name: Build 64bit MathPresso static library
+      run: ./siskin Rebol-MathPresso.nest static-lib-x64
+
+    - name: Build 64bit Rebol/MathPresso extension
+      run: ./siskin Rebol-MathPresso.nest --msvc mathpresso-windows-x64
+
+    - name: Prepare 64bit Rebol/MathPresso extension
+      run:  MOVE ./msvc/Release-x64/mathpresso-windows-x64.dll ./mathpresso-windows-x64.rebx
+
+    - name: Install Rebol for extension test
+      uses: oldes/install-rebol@v3.10.2
+
+    - name: Minimal Rebol/MathPresso extension test
+      run:  ./rebol3 ci-test.r3
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: Rebol-MathPresso-CI-${{github.run_id}}
+        path: ./mathpresso*.rebx
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install Siskin Builder
+      uses: oldes/install-siskin@v0.7.1
+
+    - name: Build 64bit Rebol/MathPresso extension
+      run: ./siskin Rebol-MathPresso.nest --clean mathpresso-linux-x64
+
+    - name: Prepare 64bit Rebol MathPresso extension
+      run:  mv ./build/mathpresso-linux-x64.so ./mathpresso-linux-x64.rebx
+
+    - name: Install Rebol for extension test
+      uses: oldes/install-rebol@v3.10.2
+
+    - name: Minimal Rebol/MathPresso extension test
+      run:  ./rebol3 ci-test.r3
+
+    - name: Compress 64bit Rebol/MathPresso extension
+      run:  gzip -9 ./mathpresso-linux-x64.rebx
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: Rebol-MathPresso-CI-${{github.run_id}}
+        path: ./mathpresso*.gz
+
+  macos:
+    runs-on: macos-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install Siskin Builder
+      uses: oldes/install-siskin@v0.7.1
+
+    - name: Build 64bit Rebol/MathPresso extension
+      run: ./siskin Rebol-MathPresso.nest --clean mathpresso-macos-x64
+
+    - name: Prepare 64bit Rebol MathPresso extension
+      run:  mv ./build/mathpresso-macos-x64.dylib ./mathpresso-macos-x64.rebx
+
+    - name: Install Rebol for extension test
+      uses: oldes/install-rebol@v3.10.2
+
+    - name: Minimal Rebol/MathPresso extension test
+      run:  ./rebol3 ci-test.r3
+
+    - name: Compress 64bit Rebol/MathPresso extension
+      run:  gzip -9 ./mathpresso-macos-x64.rebx
+
+    - uses: actions/upload-artifact@v3
+      with:
+        name: Rebol-MathPresso-CI-${{github.run_id}}
+        path: ./mathpresso*.gz
+
