@@ -64,12 +64,17 @@ r3-extension: [
 		%mathpresso-command.cpp
 	]
 	defines: ENDIAN_LITTLE
+	defines: MATHPRESSO_STATIC
+
 	;cppflags: [fpermissive]
 	flags:   shared
 
 	#if Posix? [
 		cflags: [-fPIC -pthread ]
 		libraries: [%pthread]
+	]
+	#if Windows? [
+		upx: on
 	]
 	;- generate main extension header --------------------------------
 	do %src/mathpresso-rebol-extension.r3
@@ -80,19 +85,29 @@ r3-extension: [
 
 eggs: [
 	#if Windows? [
+		"Make MathPresso static library (cmake) - x86" [
+			name: %static-lib-x86
+			arch: x86
+			cmd %build/_static_x86/ "cmake ../../mathpresso/ -A Win32 -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
+			cmd %build/_static_x86/ {msbuild mathpresso.sln /p:Configuration=Release /p:Platform=Win32}
+		]
 		"Make MathPresso static library (cmake) - x64" [
 			name: %static-lib-x64
 			arch: x64
-			cmd %build/_static/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
-			cmd %build/_static/ {msbuild mathpresso.sln /p:Configuration=Release /p:Platform=x64}
+			cmd %build/_static_x64/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
+			cmd %build/_static_x64/ {msbuild mathpresso.sln /p:Configuration=Release /p:Platform=x64}
+		]
+		"Rebol/MathPresso extension - x86" [
+			name: %mathpresso-windows-x86
+			:r3-extension
+			:target-x86
+			libraries: [%build/_static_x86/Release/mathpresso]
 		]
 		"Rebol/MathPresso extension - x64" [
 			name: %mathpresso-windows-x64
 			:r3-extension
 			:target-x64
-			upx: on
-			defines:  MATHPRESSO_STATIC
-			libraries: [%build/_static/Release/mathpresso]
+			libraries: [%build/_static_x64/Release/mathpresso]
 		]
 	]
 
@@ -117,7 +132,6 @@ eggs: [
 			compiler: clang
 			lflags:   [-dynamiclib]
 			flag:     -mmacosx-version-min=10.9 
-			defines:  MATHPRESSO_STATIC
 			libraries: [%stdc++ %build/_static_x64/ %mathpresso]
 		]
 	]
@@ -135,7 +149,6 @@ eggs: [
 			:r3-extension
 			:target-x64
 			compiler: clang
-			defines:  MATHPRESSO_STATIC
 			libraries: [%stdc++ %build/_static_linux/ %mathpresso]
 		]
 	]
