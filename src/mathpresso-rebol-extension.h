@@ -28,8 +28,8 @@ enum math_arg_words {W_MATH_ARG_0
 typedef int (*MyCommandPointer)(RXIFRM *frm, void *ctx);
 
 #define MATH_EXT_INIT_CODE \
-	"REBOL [Title: \"Rebol Mathpresso Extension\" Name: mathpresso Type: module Version: 0.1.0 Author: Oldes Date: 3-Feb-2023/17:21:32 License: Apache-2.0 Url: https://github.com/Siskin-framework/Rebol-Mathpresso]\n"\
-	"context: command [{Initialize MPContext handle with given variable names} spec [block!] \"Block of variable names used by expressions\"]\n"\
+	"REBOL [Title: \"Rebol Mathpresso Extension\" Name: mathpresso Type: module Version: 0.1.0 Author: Oldes Date: 3-Feb-2023/22:29:16 License: Apache-2.0 Url: https://github.com/Siskin-framework/Rebol-Mathpresso]\n"\
+	"context: command [{Initialize MPContext handle with given variable names} spec [block!] \"Block with variable names used by expressions\"]\n"\
 	"compile: command [\"Compile math expression using the given context\" context [handle!] \"MPContext\" expression [string!] \"Math expression\"]\n"\
 	"eval: command [{Evaluate precompiled math expressions using given variables} expression [handle!] \"MPExpression\" variables [vector!] \"Variables in a double format\"]protect/hide 'words\n"\
 	"\n"

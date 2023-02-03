@@ -1,5 +1,7 @@
+[![Rebol-MathPresso CI](https://github.com/Siskin-framework/Rebol-MathPresso/actions/workflows/main.yml/badge.svg)](https://github.com/Siskin-framework/Rebol-MathPresso/actions/workflows/main.yml)
+[![Gitter](https://badges.gitter.im/rebol3/community.svg)](https://gitter.im/rebol3/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-# Rebol/Mathpresso
+# Rebol/MathPresso
 
 [Rebol3](https://github.com/Oldes/Rebol3) extension for Mathematical Expression Parser And JIT Compiler.
 Using Petr Kobalicek's [MathPresso code](https://github.com/kobalicek/mathpresso).
@@ -34,3 +36,21 @@ loop 31 [ probe mp/eval :expr2 :data ]
 ```
 
 Feel free to let me know if something could be improved.
+
+## Extension commands:
+
+
+#### `context` `:spec`
+Initialize MPContext handle with given variable names
+* `spec` `[block!]` Block with variable names used by expressions
+
+#### `compile` `:context` `:expression`
+Compile math expression using the given context
+* `context` `[handle!]` MPContext
+* `expression` `[string!]` Math expression
+
+#### `eval` `:expression` `:variables`
+Evaluate precompiled math expressions using given variables
+* `expression` `[handle!]` MPExpression
+* `variables` `[vector!]` Variables in a double format
+

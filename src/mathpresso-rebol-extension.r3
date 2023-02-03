@@ -8,7 +8,7 @@ commands: [
 ;	;--------------------------
 	context: [
 		"Initialize MPContext handle with given variable names"
-		spec [block!] "Block of variable names used by expressions"
+		spec [block!] "Block with variable names used by expressions"
 	]
 	compile: [
 		"Compile math expression using the given context"
@@ -122,3 +122,49 @@ $cmd-dispatch};
 ;- output generated files ------------------------------------------------------
 write %mathpresso-rebol-extension.h reword :header self
 write %mathpresso-commands-table.c  reword :ctable self
+
+
+;- README documentation --------------------------------------------------------
+doc: clear ""
+hdr: clear ""
+arg: clear ""
+cmd: desc: a: t: s: none
+parse commands [
+	any [
+		set cmd: set-word! into [
+			(clear hdr clear arg)
+			(append hdr ajoin [LF LF "#### `" cmd "`"])
+			set desc: opt string!
+			any [
+				set a word!
+				set t opt block!
+				set s opt string!
+				(
+					append hdr ajoin [" `:" a "`"]
+					append arg ajoin [LF "* `" a "`"] 
+					if t [append arg ajoin [" `" mold t "`"] ]
+					if s [append arg ajoin [" " s]]
+				)
+			]
+			(
+				append doc hdr
+				append doc LF
+				append doc any [desc ""]
+				append doc arg
+			)
+		]
+	]
+]
+
+try/except [
+	readme: read/string %../README.md
+	readme: clear find/tail readme "## Extension commands:"
+	append readme ajoin [
+		LF doc
+		LF LF
+	]
+	write %../README.md head readme
+][
+	print doc
+]
+
