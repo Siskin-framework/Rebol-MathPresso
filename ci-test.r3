@@ -64,3 +64,15 @@ profile [[mathp-version data1][rebol-version data2]]
 ? data1
 ? data2
 probe equal? data1 data2
+
+print-horizontal-line
+;---------------------------------------------------------------------
+print as-yellow "=== Graph2D example ================================"
+
+do %examples/graph2d.reb
+image: make image! 640x480
+probe delta-time [ graph2d image 9 ]
+try [save %graph2d-result.jpg image]
+
+
+

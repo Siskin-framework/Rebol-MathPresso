@@ -5,6 +5,7 @@
 !*.nest
 !/src
 !/test
+!/examples
 !/README.md
 !/LICENSE
 !/ci-test.r3
