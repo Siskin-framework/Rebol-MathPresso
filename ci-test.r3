@@ -1,9 +1,28 @@
 Rebol [
     title: "Rebol/MathPresso extension CI test"
+    needs: 3.16.0 ;; used the new vector syntax
 ]
 
-;; make sure that we load a fresh extension
-try [system/modules/easing: none]
+print ["Running test on Rebol build:" mold to-block system/build]
+
+system/options/quiet: false
+system/options/log/rebol: 4
+
+if CI?: any [
+    "true" = get-env "CI"
+    "true" = get-env "GITHUB_ACTIONS"
+    "true" = get-env "TRAVIS"
+    "true" = get-env "CIRCLECI"
+    "true" = get-env "GITLAB_CI"
+][
+    ;; configure modules location for the CI test 
+    system/options/modules: dirize to-rebol-file any [
+        get-env 'REBOL_MODULES_DIR
+        what-dir
+    ]
+    ;; make sure that we load a fresh extension
+    try [system/modules/mathpresso: none]
+]
 mp: import 'mathpresso
 
 ;; print content of the module...
@@ -17,7 +36,7 @@ expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude)/100"
 
 ;; To evaluate the expression, we need to provide a vector containing double values of count
 ;; eaqual or greater than number of variables used to create the evaluation context (4 in this case)
-data: #[double! [0 0 0 10000 0]] ;; used in the expression like x, y, step, amplitude and result values
+data: #(double! [0 0 0 10000 0]) ;; used in the expression like x, y, step, amplitude and result values
 data/3: pi / 30                  ;; initialize the step onput value using Rebol only 
 
 ;; Evaluate expression (preferably multiple times)
@@ -57,13 +76,13 @@ mathp-version: function[data][
         mp/eval :expr2 :data
     ]
 ]
-data1: #[double! [0 0 0.1 10000 0]]
-data2: #[double! [0 0 0.1 10000 0]]
+data1: #(double! [0 0 0.1 10000 0])
+data2: #(double! [0 0 0.1 10000 0])
 
 profile [[mathp-version data1][rebol-version data2]]
 ? data1
 ? data2
-probe equal? data1 data2
+assert [equal? data1 data2]
 
 print-horizontal-line
 ;---------------------------------------------------------------------
@@ -71,8 +90,9 @@ print as-yellow "=== Graph2D example ================================"
 
 do %examples/graph2d.reb
 image: make image! 640x480
-probe delta-time [ graph2d image 9 ]
-try [save %graph2d-result.jpg image]
+probe delta-time [ graph2d image 19 ]
+? image
+try [save %graph2d-result.png image]
 
 
 

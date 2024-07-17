@@ -17,28 +17,22 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.7.1
+      uses: oldes/install-siskin@v0.17.0
 
     - name: Build 32bit MathPresso static library
       run: ./siskin Rebol-MathPresso.nest static-lib-x86
 
     - name: Build 32bit Rebol/MathPresso extension
-      run: ./siskin Rebol-MathPresso.nest --msvc mathpresso-windows-x86
-
-    - name: Prepare 32bit Rebol/MathPresso extension
-      run:  MOVE ./msvc/Release-Win32/mathpresso-windows-x86.dll ./mathpresso-windows-x86.rebx
+      run: ./siskin Rebol-MathPresso.nest --msvc -o mathpresso-windows-x86.rebx mathpresso-windows-x86
 
     - name: Build 64bit MathPresso static library
       run: ./siskin Rebol-MathPresso.nest static-lib-x64
 
     - name: Build 64bit Rebol/MathPresso extension
-      run: ./siskin Rebol-MathPresso.nest --msvc mathpresso-windows-x64
-
-    - name: Prepare 64bit Rebol/MathPresso extension
-      run:  MOVE ./msvc/Release-x64/mathpresso-windows-x64.dll ./mathpresso-windows-x64.rebx
+      run: ./siskin Rebol-MathPresso.nest --msvc -o mathpresso-windows-x64.rebx mathpresso-windows-x64
 
     - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.10.2
+      uses: oldes/install-rebol@v3.17.0
 
     - name: Minimal Rebol/MathPresso extension test
       run:  ./rebol3 ci-test.r3
@@ -55,19 +49,16 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.7.1
+      uses: oldes/install-siskin@v0.17.0
 
     - name: Build 64bit MathPresso static library
       run: ./siskin Rebol-MathPresso.nest static-lib-x64
 
     - name: Build 64bit Rebol/MathPresso extension
-      run: ./siskin Rebol-MathPresso.nest --clean mathpresso-linux-x64
-
-    - name: Prepare 64bit Rebol MathPresso extension
-      run:  mv ./build/mathpresso-linux-x64.so ./mathpresso-linux-x64.rebx
+      run: ./siskin Rebol-MathPresso.nest -o mathpresso-linux-x64.rebx mathpresso-linux-x64
 
     - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.10.2
+      uses: oldes/install-rebol@v3.17.0
 
     - name: Minimal Rebol/MathPresso extension test
       run:  ./rebol3 ci-test.r3
@@ -87,19 +78,16 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.7.1
+      uses: oldes/install-siskin@v0.17.0
 
     - name: Build 64bit MathPresso static library
       run: ./siskin Rebol-MathPresso.nest static-lib-x64
 
     - name: Build 64bit Rebol/MathPresso extension
-      run: ./siskin Rebol-MathPresso.nest --clean mathpresso-macos-x64
-
-    - name: Prepare 64bit Rebol MathPresso extension
-      run:  mv ./build/mathpresso-macos-x64.dylib ./mathpresso-macos-x64.rebx
+      run: ./siskin Rebol-MathPresso.nest -o mathpresso-macos-x64.rebx mathpresso-macos-x64
 
     - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.10.2
+      uses: oldes/install-rebol@v3.17.0
 
     - name: Minimal Rebol/MathPresso extension test
       run:  ./rebol3 ci-test.r3

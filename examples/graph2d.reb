@@ -6,10 +6,13 @@ REBOL [
         Using precompiled math expression.
         https://github.com/Siskin-framework/Rebol-MathPresso
     }
-    reference: https://p5js.org/examples/math-graphing-2d-equations.html
+    reference: https://processing.org/examples/graphing2dequation.html
     license: MIT
-    needs: [mathpresso]
-    usage: [save %result.jpg graph2d 640x480 4]
+    needs: [
+        3.16.0 ;; used the new vector syntax
+        mathpresso
+    ]
+    usage: [save %result.png graph2d 640x480 4]
 ]
 
 graph2d: function/with [
@@ -49,7 +52,7 @@ graph2d: function/with [
     space-high: 16.0  ;= 2D space height
 
     ;; buffer for its values
-    data: #[double! [0 0 0 0 0 0 0]]
+    data: #(double! [0 0 0 0 0 0 0])
     ;; create a context for the expression
     cntx: math/context [n x y bw theta r val]
     ;; and compile the expression
