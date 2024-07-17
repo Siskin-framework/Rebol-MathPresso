@@ -21,7 +21,7 @@ expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude)/100"
 
 ;; To evaluate the expression, we need to provide a vector containing double values of count
 ;; eaqual or greater than number of variables used to create the evaluation context (4 in this case)
-data: #[double! [0 0 0 10000 0]] ; used in the expression like x, y, step, amplitude and result values
+data: #(double! [0 0 0 10000 0]) ; used in the expression like x, y, step, amplitude and result values
 
 ;; initialize the step onput value using Rebol only 
 data/3: pi / 30
