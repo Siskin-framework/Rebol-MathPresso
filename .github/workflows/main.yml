@@ -14,7 +14,7 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Siskin Builder
       uses: oldes/install-siskin@v0.17.0
@@ -32,21 +32,21 @@ jobs:
       run: ./siskin Rebol-MathPresso.nest --msvc -o mathpresso-windows-x64.rebx mathpresso-windows-x64
 
     - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.17.0
+      uses: oldes/install-rebol@v3.18.0
 
     - name: Minimal Rebol/MathPresso extension test
       run:  ./rebol3 ci-test.r3
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: Rebol-MathPresso-CI-${{github.run_id}}
+        name: Rebol-MathPresso-CI-windows-${{github.run_id}}
         path: ./mathpresso*.rebx
 
   linux:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Siskin Builder
       uses: oldes/install-siskin@v0.17.0
@@ -58,7 +58,7 @@ jobs:
       run: ./siskin Rebol-MathPresso.nest -o mathpresso-linux-x64.rebx mathpresso-linux-x64
 
     - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.17.0
+      uses: oldes/install-rebol@v3.18.0
 
     - name: Minimal Rebol/MathPresso extension test
       run:  ./rebol3 ci-test.r3
@@ -66,16 +66,16 @@ jobs:
     - name: Compress 64bit Rebol/MathPresso extension
       run:  gzip -9 ./mathpresso-linux-x64.rebx
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: Rebol-MathPresso-CI-${{github.run_id}}
+        name: Rebol-MathPresso-CI-linux-${{github.run_id}}
         path: ./mathpresso*.gz
 
   macos:
     runs-on: macos-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Siskin Builder
       uses: oldes/install-siskin@v0.17.0
@@ -87,7 +87,7 @@ jobs:
       run: ./siskin Rebol-MathPresso.nest -o mathpresso-macos-x64.rebx mathpresso-macos-x64
 
     - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.17.0
+      uses: oldes/install-rebol@v3.18.0
 
     - name: Minimal Rebol/MathPresso extension test
       run:  ./rebol3 ci-test.r3
@@ -95,8 +95,8 @@ jobs:
     - name: Compress 64bit Rebol/MathPresso extension
       run:  gzip -9 ./mathpresso-macos-x64.rebx
 
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
-        name: Rebol-MathPresso-CI-${{github.run_id}}
+        name: Rebol-MathPresso-CI-macos-${{github.run_id}}
         path: ./mathpresso*.gz
 
