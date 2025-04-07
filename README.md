@@ -1,5 +1,8 @@
+[![rebol-mathpresso](https://github.com/user-attachments/assets/0541d4c8-f5dd-487f-94e4-53c29c44863c)](https://github.com/Siskin-framework/Rebol-MathPresso)
+
 [![Rebol-MathPresso CI](https://github.com/Siskin-framework/Rebol-MathPresso/actions/workflows/main.yml/badge.svg)](https://github.com/Siskin-framework/Rebol-MathPresso/actions/workflows/main.yml)
 [![Gitter](https://badges.gitter.im/rebol3/community.svg)](https://gitter.im/rebol3/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+[![Zulip](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://rebol.zulipchat.com/)
 
 # Rebol/MathPresso
 
