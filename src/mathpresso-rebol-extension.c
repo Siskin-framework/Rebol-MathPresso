@@ -1,7 +1,13 @@
+//   ____  __   __        ______        __
+//  / __ \/ /__/ /__ ___ /_  __/__ ____/ /
+// / /_/ / / _  / -_|_-<_ / / / -_) __/ _ \
+// \____/_/\_,_/\__/___(@)_/  \__/\__/_// /
+//  ~~~ oldes.huhuman at gmail.com ~~~ /_/
 //
-// Mathpresso experimental Rebol extension
-// ====================================
-// Use on your own risc!
+// SPDX-License-Identifier: MIT
+// =============================================================================
+// Rebol/MathPresso experimental Rebol extension
+// =============================================================================
 
 #include "mathpresso-rebol-extension.h"
 
@@ -12,7 +18,6 @@ REBCNT* math_cmd_words;
 REBCNT* math_arg_words;
 REBCNT  Handle_MPExpression;
 REBCNT  Handle_MPContext;
-
 extern MyCommandPointer Command[];          // in mathpresso-commands-table.c //
 //============================================================================//
 

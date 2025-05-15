@@ -1,7 +1,13 @@
+//   ____  __   __        ______        __
+//  / __ \/ /__/ /__ ___ /_  __/__ ____/ /
+// / /_/ / / _  / -_|_-<_ / / / -_) __/ _ \
+// \____/_/\_,_/\__/___(@)_/  \__/\__/_// /
+//  ~~~ oldes.huhuman at gmail.com ~~~ /_/
 //
-// MathPresso experimental Rebol extension
-// =======================================
-// Use on your own risc!
+// SPDX-License-Identifier: MIT
+// =============================================================================
+// Rebol/MathPresso experimental Rebol extension
+// =============================================================================
 
 #include "mathpresso.h"
 extern "C" {
@@ -14,6 +20,7 @@ extern "C" {
 #define COMMAND extern "C" int
 
 #define FRM_IS_HANDLE(n, t)     (RXA_TYPE(frm,n) == RXT_HANDLE && RXA_HANDLE_TYPE(frm, n) == t)
+#define FRM_IS_STRUCT(n)        (RXA_TYPE(frm,n) == RXT_STRUCT)
 #define ARG_Is_MPContext(n)     FRM_IS_HANDLE(n, Handle_MPContext)
 #define ARG_Is_MPExpression(n)  FRM_IS_HANDLE(n, Handle_MPExpression)
 #define ARG_MPContext(n)        (ARG_Is_MPContext(n)    ? (MPContext*)   (RXA_HANDLE_CONTEXT(frm, n)->handle) : NULL)
@@ -59,6 +66,8 @@ struct MyOutputLog : public OutputLog {
 	}
 };
 
+REBCNT  MPOptions = 0;
+
 #define  MAX_VERBOSE_FLAGS (kOptionVerbose | kOptionDebugAst | kOptionDebugMachineCode | kOptionDebugCompiler)
 #define  AST_VERBOSE_FLAGS (kOptionVerbose | kOptionDebugAst)
 #define CODE_VERBOSE_FLAGS (kOptionVerbose | kOptionDebugMachineCode)
@@ -66,10 +75,10 @@ struct MyOutputLog : public OutputLog {
 extern "C" {
 	void* releaseMPExpression(void* hndl) {
 		if (hndl != NULL) {
-			MPExpression *exp = (MPExpression*)hndl;
-			if(exp->expression) {
-				debug_print("GC MPExpression %p, variables: %u\n", exp->expression, exp->variables);
-				delete (mathpresso::Expression*)exp->expression;
+			MPExpression *mpe = (MPExpression*)hndl;
+			debug_print("GC MPExpression %p, struct: %u\n", mpe->expression, mpe->struct_id);
+			if (mpe->expression) {
+				delete (mathpresso::Expression*)mpe->expression;
 			}
 		}
 		return NULL;
@@ -78,7 +87,7 @@ extern "C" {
 		if (hndl != NULL) {
 			MPContext *mpc = (MPContext *)hndl;
 			if(mpc->context) { 
-				debug_print("GC MPContext %p, variables: %u\n", mpc->context, mpc->variables);
+				debug_print("GC MPContext %p\n", mpc->context);
 				delete (mathpresso::Context*)mpc->context;
 			}
 		}
@@ -87,69 +96,75 @@ extern "C" {
 }
 
 COMMAND cmd_context(RXIFRM *frm, void *rctx) {
-	REBSER *blk;
-	RXIARG val;
-	REBCNT index;
-	REBINT type;
+	REBSER *spec;
+	REBHOB *hob = NULL;
+	REBCNT i;
+	MPContext *mpc;
+	mathpresso::Context *ctx = NULL;
 
-	blk = (REBSER *)RXA_SERIES(frm, 1);
-	index = RXA_INDEX(frm, 1);
+	spec = RXA_STRUCT_SPEC(frm, 1);
+	if (spec == NULL || spec->series == NULL) {
+		RETURN_ERROR("Bad struct specification!");
+	}
 
-	REBHOB* hob = RL_MAKE_HANDLE_CONTEXT(Handle_MPContext);
+	hob = RL_MAKE_HANDLE_CONTEXT(Handle_MPContext);
 	if (hob == NULL) return RXR_NONE;
 
-	MPContext *mpc = (MPContext*)hob->data;
-	mathpresso::Context *c = new mathpresso::Context();
-	mpc->context   = c;
-	mpc->variables = 0;
+	mpc = (MPContext*)hob->data;
+	mpc->context = ctx = new Context();
+	mpc->struct_id = RXA_STRUCT_ID(frm, 1);
+	mpc->bytes_needed = 0;
 
-	debug_print("New MPContext: %p\n", c);
+	debug_print("New MPContext: %p\n", ctx);
 
-	c->addBuiltIns();
+	ctx->addBuiltIns();
 
-	while (index < blk->tail) {
-		type = RL_GET_VALUE(blk, index, &val);
-		if (type == RXT_WORD) {
-			debug_print("word: %s\n", RL_WORD_STRING(val.int32a));
-			c->addVariable(cs_cast(RL_WORD_STRING(val.int32a)), mpc->variables*sizeof(REBDEC));
-			mpc->variables++;
+	REBSTI *info = (REBSTI *)BIN_HEAD(spec->series);
+	REBSTF *field = (REBSTF *)info + 1;
+
+	for (i = 0; i < info->count; ++i, ++field) {
+		if (field->type == 10) {
+			ctx->addVariable(cs_cast(RL_WORD_STRING(field->sym)), field->offset);
+			mpc->bytes_needed += sizeof(REBDEC);
 		}
-		else {
-			debug_print("ignoring type: %i\n", type);
-			//RXA_SERIES(frm, 1) = "Unsupported argument!";
-			//RL_FREE_HANDLE_CONTEXT(hob);
-			//return RXR_NONE;
-		}
-		index++;
 	}
 	RETURN_HANDLE(hob);
 }
 
 COMMAND cmd_compile(RXIFRM *frm, void *ctx) {	
-	REBDEC result = 0;
+	REBHOB *hob = NULL;
+	REBSER *code;
+	MPContext *mpc;
+	MPExpression *mpe;
+	mathpresso::Context    *mpCtx = NULL;
+	mathpresso::Expression *mpExp = NULL;
 	MyOutputLog outputLog;
 
-	MPContext *mpc = ARG_MPContext(1);
-	REBSER    *src = ARG_Series(2);
+	if (FRM_IS_STRUCT(1)) {
+		cmd_context(frm, ctx);
+	}
 
-	if(!mpc) return RXR_FALSE; // invalid context handle
+	mpc = ARG_MPContext(1);
+	if (mpc == NULL) return RXR_NONE;
 
-	REBHOB* hob = RL_MAKE_HANDLE_CONTEXT(Handle_MPExpression);
+	mpCtx = (Context*)mpc->context;
+	if (mpCtx == NULL) return RXR_NONE;
+
+	code = ARG_Series(2);
+	// if unicode, convert to UTF8...
+	if(SERIES_WIDE(code) > 1)
+		code = RL_ENCODE_UTF8_STRING(SERIES_DATA(code), SERIES_TAIL(code), TRUE, FALSE);
+
+	// Create a new expression...
+	hob = RL_MAKE_HANDLE_CONTEXT(Handle_MPExpression);
 	if (hob == NULL) return RXR_NONE;
-
-	MPExpression *mpe = (MPExpression*)hob->data;
-	Expression *e = new mathpresso::Expression();
-	Context *c = (Context*)mpc->context;
-
-	mpe->expression = e;
-	mpe->variables  = mpc->variables;
-	
-	debug_print("New MPExpression: %p for context: %p with %u variables.\n", e, c, mpe->variables);
-
-	if(SERIES_WIDE(src) > 1)
-		src = RL_ENCODE_UTF8_STRING(SERIES_DATA(src), SERIES_TAIL(src), SERIES_WIDE(src) > 1, FALSE);
-
-	Error err = e->compile(*c, SERIES_TEXT(src), kOptionVerbose, &outputLog);
+	mpe = (MPExpression*)hob->data;
+	mpe->expression = mpExp = new Expression();
+	mpe->struct_id = mpc->struct_id;
+	mpe->bytes_needed = mpc->bytes_needed;
+	debug_print("New MPExpression: %p for context: %p options: %u\n", mpExp, mpCtx, MPOptions);
+	// And compile it...
+	Error err = mpExp->compile(*mpCtx, SERIES_TEXT(code), MPOptions, &outputLog);
 	if (err != kErrorOk) {
 		RL_FREE_HANDLE_CONTEXT(hob);
 		return RXR_NONE;
@@ -159,27 +174,41 @@ COMMAND cmd_compile(RXIFRM *frm, void *ctx) {
 
 COMMAND cmd_eval(RXIFRM *frm, void *ctx) {
 	MPExpression *mpe;
-	REBSER *vec;
-	REBU64 bytesNeeded, vecBytes;
+	REBSER *ser;
+	REBYTE *bin;
+	REBU64  len;
 
 	mpe = ARG_MPExpression(1);
-	vec = ARG_Series(2);
-
 	if(mpe == NULL) {
 		RETURN_ERROR("Command needs a valid MPExpression handle!");
 	}
-	if(VECT_TYPE(vec) != 11) {
-		RETURN_ERROR("Command needs a vector with double values!");
+
+	if (FRM_IS_STRUCT(2)) {
+		if (mpe->struct_id != RXA_STRUCT_ID(frm, 2)) {
+			RETURN_ERROR("Bad struct!");
+		}
+		len = RXA_STRUCT_LEN(frm, 2);
+		bin = RXA_STRUCT_BIN(frm, 2);
+	} else {
+		ser = ARG_Series(2);
+		if(VECT_TYPE(ser) != 11) {
+			RETURN_ERROR("Command needs a vector with double values!");
+		}
+		len = (SERIES_TAIL(ser) - ARG_Index(2)) * sizeof(REBDEC);
+		bin = SERIES_SKIP(ser, ARG_Index(2));
 	}
-	
-	vecBytes = (SERIES_TAIL(vec) - ARG_Index(2)) * sizeof(REBDEC);
-	bytesNeeded = mpe->variables * sizeof(REBDEC);
-	if(vecBytes < bytesNeeded) {
-		debug_print("Vector bytes: %llu, needed: %llu\n", vecBytes, bytesNeeded);
+	if (len < mpe->bytes_needed) {
+		debug_print("Data bytes: %llu, needed: %llu\n", len, mpe->bytes_needed);
 		RETURN_ERROR("Insufficient size of input data!");
 	}
 
 	Expression *e = (Expression*)mpe->expression;
+	RETURN_DOUBLE(e->evaluate(bin));
+}
 
-	RETURN_DOUBLE(e->evaluate(SERIES_SKIP(vec, ARG_Index(2))));
+COMMAND cmd_set_options(RXIFRM *frm, void *ctx) {
+	REBU64 num = RXA_UINT64(frm,1);
+	if (num > 0xFFFFu) return RXR_FALSE;
+	MPOptions = (REBCNT)num;
+	return RXR_TRUE;
 }

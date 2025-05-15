@@ -1,6 +1,6 @@
 Rebol [
     title: "Rebol/MathPresso extension CI test"
-    needs: 3.16.0 ;; used the new vector syntax
+    needs: 3.19.1 ;; used the new struct datatype
 ]
 
 print ["Running test on Rebol build:" mold to-block system/build]
@@ -25,31 +25,44 @@ if CI?: any [
 ]
 mp: import 'mathpresso
 
-;; print content of the module...
+;; Print content of the module...
 ? mp
 
-;; initialize a mathpresso context with given number of input/output variable names
-ctx: mp/context [x y step amplitude result]
+;; It is possible to modify options used during compilation.
+mp/set-options mp/kOptionDebugMachineCode | mp/kOptionDebugAst
 
-;; compile an expression using the context
-expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude)/100"
+;; Initialize a Mathpresso context using a struct containing some double values.
+variables!: make struct! [
+    unused    [uint64!] ;; this value is ignored by mathpresso expression
+    x         [double!]
+    y         [double!]
+    step      [double!]
+    amplitude [double!]
+    result    [double!]
+]
+ctx: mp/context :variables!
 
-;; To evaluate the expression, we need to provide a vector containing double values of count
-;; eaqual or greater than number of variables used to create the evaluation context (4 in this case)
-data: #(double! [0 0 0 10000 0]) ;; used in the expression like x, y, step, amplitude and result values
-data/3: pi / 30                  ;; initialize the step onput value using Rebol only 
+;; Compile an expression using the context (or directly the struct)
+expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude*100)/100"
+
+;; To evaluate the expression, provide a struct of the same type used during compilation.
+data: make variables! [
+    unused:    1234     ;; this value should not be affected by the evaluation
+    step:      pi / 30  ;; initialize the step onput value using Rebol only 
+    amplitude: 100      ;; maximum value of the result
+]
 
 ;; Evaluate expression (preferably multiple times)
 loop 31 [ probe mp/eval :expr :data ]
 
-;; Values in the data vector are updated...
+;; Values in the struct are updated...
 probe data
 
-;; one context may be shared with multiple expressions
+;; One context may be shared with multiple expressions
 expr2: mp/compile :ctx {
     y=sin(x)+cos(x/2);
     x=x+step;
-    result=round(y*amplitude)/100
+    result=round(y*amplitude*100)/100
 }
 loop 31 [ probe mp/eval :expr2 :data ]
 
@@ -58,26 +71,26 @@ print as-yellow "Performance test (comparing naive Rebol version with compiled e
 
 rebol-version: function[data][
     ;; It is not exact version like expr2, because
-    ;; the vector is not updated on each step!
-    x: data/1
+    ;; the struct is not updated on each step!
+    x: data/x
     loop 1000 [
         y: (sin x) + (cos x / 2)
-        x: x + data/3
-        data/5: (round (y * data/4)) / 100
+        x: x + data/step
+        data/result: (round (y * data/amplitude * 100)) / 100
     ]
-    ;; update the vector with the final state
-    data/1: x
-    data/2: y
+    ;; update the struct with the final state
+    data/x: x
+    data/y: y
     ;; return result as the final value
-    data/5
+    data/result
 ]
 mathp-version: function[data][
     loop 1000 [
         mp/eval :expr2 :data
     ]
 ]
-data1: #(double! [0 0 0.1 10000 0])
-data2: #(double! [0 0 0.1 10000 0])
+data1: make variables! [step: 0.1 amplitude: 100]
+data2: copy data1
 
 profile [[mathp-version data1][rebol-version data2]]
 ? data1
