@@ -27,7 +27,7 @@ variables!: make struct! [
 ]
 ctx: mp/context :variables!
 
-;; compile an expression using this struct
+;; Compile an expression using the context (or directly the struct)
 expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude*100)/100"
 
 ;; To evaluate the expression, provide a struct of the same type used during compilation.
