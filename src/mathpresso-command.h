@@ -1,7 +1,13 @@
+//   ____  __   __        ______        __
+//  / __ \/ /__/ /__ ___ /_  __/__ ____/ /
+// / /_/ / / _  / -_|_-<_ / / / -_) __/ _ \
+// \____/_/\_,_/\__/___(@)_/  \__/\__/_// /
+//  ~~~ oldes.huhuman at gmail.com ~~~ /_/
 //
-// MathPresso experimental Rebol extension
-// ====================================
-// Use on your own risc!
+// SPDX-License-Identifier: MIT
+// =============================================================================
+// Rebol/MathPresso experimental Rebol extension
+// =============================================================================
 
 #include <stdlib.h>
 #include <math.h>
@@ -24,13 +30,14 @@ extern u32* math_arg_words;
 extern REBCNT Handle_MPExpression;
 extern REBCNT Handle_MPContext;
 
-
 typedef struct MPExpression_t {
 	void* expression;  // compiled mathpresso::Expression
-	u32   variables;   // number of input variables needed
+	u32   struct_id;
+	u32   bytes_needed;
 } MPExpression;
 
 typedef struct MPContext_t {
 	void* context;     // initialized mathpresso::Context
-	u32   variables;   // number of input variables used
+	u32   struct_id;
+	u32   bytes_needed;
 } MPContext;

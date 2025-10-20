@@ -1,6 +1,10 @@
 REBOL [
-	title: "Mathpresso module builder"
-	type: module
+	title:  "Rebol/MiniAudio module builder"
+	type:    module
+	date:    15-May-2025
+	home:    https://github.com/Siskin-framework/Rebol-MathPresso
+	version: 0.2.0
+	author: @Oldes
 ]
 
 commands: [
@@ -8,17 +12,22 @@ commands: [
 ;	;--------------------------
 	context: [
 		"Initialize MPContext handle with given variable names"
-		spec [block!] "Block with variable names used by expressions"
+		spec [struct!] "Struct with double fields used as expression variables"
 	]
 	compile: [
 		"Compile math expression using the given context"
-		context [handle!] "MPContext"
-		expression [string!] "Math expression"
+		context [struct! handle!] "Struct with double fields used by expression as variables or existing MPContext handle"
+		expression  [string!]  "Math expression"
+		/with flags [integer!] "Optional compilation flags"
 	]
 	eval: [
 		"Evaluate precompiled math expressions using given variables"
 		expression [handle!] "MPExpression"
-		variables  [vector!] "Variables in a double format"
+		variables  [vector! struct!] "Variables in a double format"
+	]
+	set-options: [
+		"MathPresso options used when expression is being compiled"
+		flags [integer! none!] "Combination of: 1 = Verbose, 2 = DebugAst, 4 = DebugMachineCode, 8 = DebugCompiler"
 	]
 ]
 
@@ -30,13 +39,26 @@ arg-words: []
 reb-code: ajoin [
 	{REBOL [Title: "Rebol Mathpresso Extension"}
 	{ Name: mathpresso Type: module}
-	{ Version: 0.1.0}
+	{ Version: 0.2.0}
 	{ Author: Oldes}
 	{ Date: } now/utc
-	{ License: Apache-2.0}
+	{ License: MIT}
 	{ Url: https://github.com/Siskin-framework/Rebol-Mathpresso}
 	#"]"
 ]
+logo: next {
+//   ____  __   __        ______        __
+//  / __ \/ /__/ /__ ___ /_  __/__ ____/ /
+// / /_/ / / _  / -_|_-<_ / / / -_) __/ _ \
+// \____/_/\_,_/\__/___(@)_/  \__/\__/_// /
+//  ~~~ oldes.huhuman at gmail.com ~~~ /_/
+//
+// Project: Rebol/MiniAudio extension
+// SPDX-License-Identifier: MIT
+// =============================================================================
+// NOTE: auto-generated file, do not modify!
+}
+
 enu-commands:  "" ;; command name enumerations
 cmd-declares:  "" ;; command function declarations
 cmd-dispatch:  "" ;; command functionm dispatcher
@@ -75,7 +97,13 @@ append math-arg-words "^/};"
 ;init-words words: } mold/flat cmd-words #" " mold/flat arg-words {
 ;protect/hide 'init-words}
 ;]
-append reb-code "protect/hide 'words^/"
+append reb-code ext-values: {
+;- Options used with the `set-options` command.
+kOptionVerbose:          1 ;; Show messages and warnings.
+kOptionDebugAst:         2 ;; Debug AST (shows initial and final AST).
+kOptionDebugMachineCode: 4 ;; Debug machine code generated.
+kOptionDebugCompiler:    8 ;; Debug AsmJit's compiler.
+}
 
 print reb-code
 
@@ -87,15 +115,13 @@ foreach line split reb-code lf [
 ]
 
 ;-- C file templates -----------------------------------------------------------
-header: {//
-// auto-generated file, do not modify!
-//
+header: {$logo
 
 #include "mathpresso-command.h"
 
 #define MIN_REBOL_VER 3
-#define MIN_REBOL_REV 10
-#define MIN_REBOL_UPD 2
+#define MIN_REBOL_REV 19
+#define MIN_REBOL_UPD 1
 #define VERSION(a, b, c) (a << 16) + (b << 8) + c
 #define MIN_REBOL_VERSION VERSION(MIN_REBOL_VER, MIN_REBOL_REV, MIN_REBOL_UPD)
 
@@ -111,9 +137,8 @@ typedef int (*MyCommandPointer)(RXIFRM *frm, void *ctx);
 #define MATH_EXT_INIT_CODE $init-code
 }
 ;;------------------------------------------------------------------------------
-ctable: {//
-// auto-generated file, do not modify!
-//
+ctable: {$logo
+
 #include "mathpresso-rebol-extension.h"
 MyCommandPointer Command[] = {
 $cmd-dispatch};
@@ -128,11 +153,14 @@ write %mathpresso-commands-table.c  reword :ctable self
 doc: clear ""
 hdr: clear ""
 arg: clear ""
-cmd: desc: a: t: s: none
+cmd: desc: a: t: s: readme: r: none
+
 parse commands [
 	any [
+		quote init-words: skip
+		|
 		set cmd: set-word! into [
-			(clear hdr clear arg)
+			(clear hdr clear arg r: none)
 			(append hdr ajoin [LF LF "#### `" cmd "`"])
 			set desc: opt string!
 			any [
@@ -140,9 +168,16 @@ parse commands [
 				set t opt block!
 				set s opt string!
 				(
-					append hdr ajoin [" `:" a "`"]
+					unless r [append hdr ajoin [" `:" a "`"]]
 					append arg ajoin [LF "* `" a "`"] 
-					if t [append arg ajoin [" `" mold t "`"] ]
+					if t [append arg ajoin [" `" mold t "`"]]
+					if s [append arg ajoin [" " s]]
+				)
+				|
+				set r refinement!
+				set s opt string!
+				(
+					append arg ajoin [LF "* `/" r "`"] 
 					if s [append arg ajoin [" " s]]
 				)
 			]
@@ -156,15 +191,19 @@ parse commands [
 	]
 ]
 
-try/except [
+
+try/with [
 	readme: read/string %../README.md
 	readme: clear find/tail readme "## Extension commands:"
 	append readme ajoin [
 		LF doc
 		LF LF
+		LF "## Other extension values:"
+		LF "```rebol"
+		trim/tail ext-values
+		LF "```"
+		LF
 	]
 	write %../README.md head readme
-][
-	print doc
-]
+] :print
 
