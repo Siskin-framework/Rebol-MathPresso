@@ -8,6 +8,89 @@ print ["Running test on Rebol build:" mold to-block system/build]
 system/options/quiet: false
 system/options/log/rebol: 4
 
+;;=============================================================================
+;; Minimal self-contained harness
+;;=============================================================================
+
+test-count: 0
+fail-count: 0
+skip-count: 0
+failed: copy []
+
+group: func ["Starts a named group of tests" name [string!]][
+	print ajoin [lf as-yellow "== " as-yellow name]
+]
+
+;; NOTE: plain `func` with explicit locals - `function` would collect the
+;; counter set-words as locals and the totals would never move.
+;;
+;; A test block must EVALUATE to true; anything else counts as a failure and
+;; is printed as the detail, so a check can hand back a string saying what
+;; went wrong. Never use `return` inside one - it would return from
+;; `--test--` itself and the result would never be counted.
+--test--: func [
+	"Passes when the code block evaluates to true"
+	name [string!]
+	code [block!]
+	/local result
+][
+	test-count: test-count + 1
+	result: try code
+	case [
+		error? :result [
+			fail-count: fail-count + 1
+			append failed name
+			print [as-red "[FAIL]" name]
+			print [as-red "      " mold/flat :result]
+		]
+		:result = true [
+			print [as-green "[ ok ]" name]
+		]
+		true [
+			fail-count: fail-count + 1
+			append failed name
+			print [as-red "[FAIL]" name "=>" mold/flat/part :result 60]
+		]
+	]
+	:result
+]
+
+--skip--: func ["Counts a test which cannot run here" name [string!]][
+	skip-count: skip-count + 1
+	print [as-purple "[skip]" name]
+]
+
+--rejects--: func [
+	"Checks that the code is refused with an error"
+	label [string!]
+	code  [block!]
+][
+	--test-- ajoin [label " is refused"] compose/only [error? try (code)]
+]
+
+;; Compares a result with what it should be and hands back the actual value
+;; when they differ, so the failure line shows it.
+is?: func ["Compares a value with the expected one" value expected][
+	any [value == expected  ajoin ["got " mold/flat/part value 60]]
+]
+
+summary: does [
+	print ajoin [lf as-yellow "-----------------------------------------------------------------------------"]
+	print [
+		"tests:" test-count
+		as-green ajoin ["passed: " test-count - fail-count - skip-count]
+		either fail-count > 0 [as-red ajoin ["failed: " fail-count]][ajoin ["failed: " fail-count]]
+		as-purple ajoin ["skipped: " skip-count]
+	]
+	if fail-count > 0 [
+		print as-red ajoin ["^/Failed tests:^/  " mold/flat failed]
+	]
+	print ""
+	quit/return either fail-count > 0 [1][0]
+]
+
+;;=============================================================================
+
 if CI?: any [
     "true" = get-env "CI"
     "true" = get-env "GITHUB_ACTIONS"
@@ -15,7 +98,7 @@ if CI?: any [
     "true" = get-env "CIRCLECI"
     "true" = get-env "GITLAB_CI"
 ][
-    ;; configure modules location for the CI test 
+    ;; configure modules location for the CI test
     system/options/modules: dirize to-rebol-file any [
         get-env 'REBOL_MODULES_DIR
         what-dir
@@ -47,9 +130,9 @@ expr: mp/compile :ctx "y=sin(x); x=x+step; result=round_half_away(y*amplitude*10
 
 ;; To evaluate the expression, provide a struct of the same type used during compilation.
 data: make variables! compose [
-    unused:    1234      ;; this value should not be affected by the evaluation
+    unused:    1234     ;; this value should not be affected by the evaluation
     step:      (pi / 30) ;; initialize the step input value using Rebol only
-    amplitude: 100       ;; maximum value of the result
+    amplitude: 100      ;; maximum value of the result
 ]
 
 ;; Evaluate expression (preferably multiple times)
@@ -95,11 +178,44 @@ data2: copy data1
 profile [[mathp-version data1][rebol-version data2]]
 ? data1
 ? data2
-assert [equal? data1 data2]
 
-print-hline
-;---------------------------------------------------------------------
-print as-yellow "=== Struct and vector arguments (ABI 1) ==========="
+;;=============================================================================
+group "Compiled expression matches Rebol"
+
+--test-- "Compiled and Rebol versions leave the same data" [equal? data1 data2]
+
+;;=============================================================================
+group "Compile errors"
+
+--test-- "A valid expression compiles" [handle? mp/compile :ctx "y = x"]
+--rejects-- "Invalid syntax" [mp/compile :ctx "y = "]
+--test-- "An unknown function is reported by its name" [
+    all [
+        error? err: try [mp/compile :ctx "y = round(x)"]
+        did find form err "round"
+    ]
+]
+--test-- "The error message includes its position" [
+    all [
+        error? err: try [mp/compile :ctx "y = round(x)"]
+        did find form err "(at 1:"
+    ]
+]
+--test-- "The line of a multi-line expression is reported" [
+    all [
+        error? err: try [mp/compile :ctx "y = x;^/y = foo(x)"]
+        did find form err "(at 2:"
+    ]
+]
+--rejects-- "Compiling an invalid expression directly from a struct" [
+    mp/compile variables! "y = foo(x)"
+]
+--test-- "A failed compilation leaves the context usable" [
+    handle? mp/compile :ctx "y = x"
+]
+
+;;=============================================================================
+group "Struct and vector arguments (ABI 1)"
 
 ;; A nested struct is a VIEW into its parent's data at a non-zero offset,
 ;; so its data and size must come from its own specification.
@@ -110,29 +226,32 @@ outer: make struct! [
 outer/tag: 7
 outer/v/a: 1.5
 outer/v/b: 2.0
-nexpr: mp/compile outer/v "r = a + b"
-assert [handle? nexpr]
-assert [3.5 = mp/eval :nexpr outer/v]
-assert [3.5 = outer/v/r]
-;; ...and the byte in front of the view must be left alone.
-assert [7 = outer/tag]
+
+--test-- "Compile against a nested struct view" [
+    handle? nexpr: mp/compile outer/v "r = a + b"
+]
+--test-- "Evaluate with a nested struct view" [is? mp/eval :nexpr outer/v 3.5]
+--test-- "The view's field is written"        [is? outer/v/r 3.5]
+--test-- "The byte in front of the view is left alone" [is? outer/tag 7]
 
 ;; A struct holding Rebol values must not be written by raw bytes.
 p: make struct! [x [double!] v [rebval!]]
-pexpr: mp/compile p "x = x + 1"
-assert [error? try [mp/eval :pexpr p]]
-assert [0.0 = p/x]
+--test-- "Compile against a struct holding Rebol values" [
+    handle? pexpr: mp/compile p "x = x + 1"
+]
+--rejects-- "Writing into a struct holding Rebol values" [mp/eval :pexpr p]
+--test-- "The refused struct keeps its data" [is? p/x 0.0]
 
 ;; A vector of doubles may be used instead of the struct.
-vexpr: mp/compile make struct! [a [double!] b [double!] r [double!]] "r = a * b"
+--test-- "Compile for use with a vector" [
+    handle? vexpr: mp/compile make struct! [a [double!] b [double!] r [double!]] "r = a * b"
+]
 vec: make vector! [decimal! 64 [3.0 4.0 0.0]]
-assert [12.0 = mp/eval :vexpr :vec]
-assert [12.0 = vec/3]
-;; ...but not a vector of other values, nor a too short one.
-assert [error? try [mp/eval :vexpr make vector! [integer! 32 [1 2 3]]]]
-assert [error? try [mp/eval :vexpr make vector! [decimal! 64 [1.0]]]]
-;; A struct of another specification is refused.
-assert [error? try [mp/eval :vexpr outer]]
+--test-- "Evaluate with a vector of doubles" [is? mp/eval :vexpr :vec 12.0]
+--test-- "The vector is written"             [is? vec/3 12.0]
+--rejects-- "A vector of integers"           [mp/eval :vexpr make vector! [integer! 32 [1 2 3]]]
+--rejects-- "A too short vector"             [mp/eval :vexpr make vector! [decimal! 64 [1.0]]]
+--rejects-- "A struct of another specification" [mp/eval :vexpr outer]
 
 print-hline
 ;---------------------------------------------------------------------
@@ -144,5 +263,4 @@ probe delta-time [ graph2d image 19 ]
 ? image
 try [save %graph2d-result.png image]
 
-
-
+summary

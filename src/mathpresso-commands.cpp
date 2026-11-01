@@ -47,22 +47,50 @@ static const char* ERR_NO_EXPRESSION = "Command needs a valid MPExpression handl
 static const char* ERR_NOT_DOUBLES   = "Command needs a vector with double values!";
 static const char* ERR_SHORT_DATA    = "Insufficient size of input data!";
 
-// By inheriting `OutputLog` one can create a way how to handle possible errors
-// and report them to humans. The most interesting and used message type is
-// `kMessageError`, because it signalizes an invalid expression. Other message
-// types are used mostly for debugging.
+// Receives messages from MathPresso's parser, optimizer and compiler.
+//
+// The first `kMessageError` is kept, with its position, so that `compile` can
+// raise it as a Rebol error. Everything else is debug output, which appears
+// only when requested using `set-options`, and is printed.
 struct MyOutputLog : public OutputLog {
-	virtual void log(unsigned int type, unsigned int line, unsigned int column, const char* message, size_t size) {
-		(void)line;
-		(void)column;
-		(void)size;
+	char error[256];
+	bool has_error;
 
-		if (type == kMessageError)
-			printf("ERROR: %s\n", message);
-		else
-			printf("WARNING: %s\n", message);
+	MyOutputLog() : has_error(false) { error[0] = 0; }
+
+	virtual void log(unsigned int type, unsigned int line, unsigned int column, const char* message, size_t size) {
+		if (type == kMessageError) {
+			if (has_error) return;
+			has_error = true;
+			// Line 0 means MathPresso has no position for the message.
+			if (line > 0)
+				snprintf(error, sizeof(error), "%.*s (at %u:%u)", (int)size, message, line, column);
+			else
+				snprintf(error, sizeof(error), "%.*s", (int)size, message);
+			return;
+		}
+		printf("WARNING: %.*s\n", (int)size, message);
 	}
 };
+
+// Used when compilation fails without logging a message (e.g. when asmjit
+// fails to generate code).
+static const char* Error_Text(Error err) {
+	switch (err) {
+	case kErrorNoMemory:            return "Out of memory!";
+	case kErrorInvalidArgument:     return "Invalid argument!";
+	case kErrorInvalidState:        return "Invalid state!";
+	case kErrorNoExpression:        return "No expression was given!";
+	case kErrorInvalidSyntax:       return "Invalid syntax!";
+	case kErrorSymbolNotFound:      return "Symbol not found!";
+	case kErrorSymbolAlreadyExists: return "Symbol already exists!";
+	default:                        return "Failed to compile the expression!";
+	}
+}
+
+// The message of a failed compilation. Static, because the interpreter reads
+// it only after the command has returned.
+static char MPError[256];
 
 static REBCNT MPOptions = 0;
 
@@ -175,7 +203,8 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 		delete mpExp;
 		mpe->expression = NULL;
 		RL_FREE_HANDLE_CONTEXT(hob);
-		return RXR_NONE;
+		snprintf(MPError, sizeof(MPError), "%s", outputLog.has_error ? outputLog.error : Error_Text(err));
+		RETURN_ERROR(MPError);
 	}
 	RETURN_HANDLE(hob);
 }
