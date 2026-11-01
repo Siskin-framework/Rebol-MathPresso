@@ -1,6 +1,6 @@
 Rebol [
     title: "Rebol/MathPresso extension CI test"
-    needs: 3.19.1 ;; used the new struct datatype
+    needs: 3.22.10 ;; extension ABI 1 (RL_Struct_Info)
 ]
 
 print ["Running test on Rebol build:" mold to-block system/build]
@@ -43,13 +43,13 @@ variables!: make struct! [
 ctx: mp/context :variables!
 
 ;; Compile an expression using the context (or directly the struct)
-expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude*100)/100"
+expr: mp/compile :ctx "y=sin(x); x=x+step; result=round_half_away(y*amplitude*100)/100"
 
 ;; To evaluate the expression, provide a struct of the same type used during compilation.
-data: make variables! [
-    unused:    1234     ;; this value should not be affected by the evaluation
-    step:      pi / 30  ;; initialize the step onput value using Rebol only 
-    amplitude: 100      ;; maximum value of the result
+data: make variables! compose [
+    unused:    1234      ;; this value should not be affected by the evaluation
+    step:      (pi / 30) ;; initialize the step input value using Rebol only
+    amplitude: 100       ;; maximum value of the result
 ]
 
 ;; Evaluate expression (preferably multiple times)
@@ -62,11 +62,11 @@ probe data
 expr2: mp/compile :ctx {
     y=sin(x)+cos(x/2);
     x=x+step;
-    result=round(y*amplitude*100)/100
+    result=round_half_away(y*amplitude*100)/100
 }
 loop 31 [ probe mp/eval :expr2 :data ]
 
-print-horizontal-line
+print-hline
 print as-yellow "Performance test (comparing naive Rebol version with compiled expression)"
 
 rebol-version: function[data][
@@ -97,7 +97,44 @@ profile [[mathp-version data1][rebol-version data2]]
 ? data2
 assert [equal? data1 data2]
 
-print-horizontal-line
+print-hline
+;---------------------------------------------------------------------
+print as-yellow "=== Struct and vector arguments (ABI 1) ==========="
+
+;; A nested struct is a VIEW into its parent's data at a non-zero offset,
+;; so its data and size must come from its own specification.
+outer: make struct! [
+    tag [uint8!]
+    v   [struct! [a [double!] b [double!] r [double!]]]
+]
+outer/tag: 7
+outer/v/a: 1.5
+outer/v/b: 2.0
+nexpr: mp/compile outer/v "r = a + b"
+assert [handle? nexpr]
+assert [3.5 = mp/eval :nexpr outer/v]
+assert [3.5 = outer/v/r]
+;; ...and the byte in front of the view must be left alone.
+assert [7 = outer/tag]
+
+;; A struct holding Rebol values must not be written by raw bytes.
+p: make struct! [x [double!] v [rebval!]]
+pexpr: mp/compile p "x = x + 1"
+assert [error? try [mp/eval :pexpr p]]
+assert [0.0 = p/x]
+
+;; A vector of doubles may be used instead of the struct.
+vexpr: mp/compile make struct! [a [double!] b [double!] r [double!]] "r = a * b"
+vec: make vector! [decimal! 64 [3.0 4.0 0.0]]
+assert [12.0 = mp/eval :vexpr :vec]
+assert [12.0 = vec/3]
+;; ...but not a vector of other values, nor a too short one.
+assert [error? try [mp/eval :vexpr make vector! [integer! 32 [1 2 3]]]]
+assert [error? try [mp/eval :vexpr make vector! [decimal! 64 [1.0]]]]
+;; A struct of another specification is refused.
+assert [error? try [mp/eval :vexpr outer]]
+
+print-hline
 ;---------------------------------------------------------------------
 print as-yellow "=== Graph2D example ================================"
 

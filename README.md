@@ -6,7 +6,7 @@
 
 # Rebol/MathPresso
 
-[Rebol3](https://github.com/Oldes/Rebol3) (3.19.1 and higher) extension for Mathematical Expression Parser And JIT Compiler.
+[Rebol3](https://github.com/Oldes/Rebol3) (3.22.10 and higher) extension for Mathematical Expression Parser And JIT Compiler.
 Using Petr Kobalicek's [MathPresso code](https://github.com/kobalicek/mathpresso).
 
 ## Usage

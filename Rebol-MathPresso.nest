@@ -1,155 +1,222 @@
-;-    .-.                                                                       
-;-   /'v'\   SISKIN-Builder 3.9.0 project file                                  
-;-  (/uOu\)  https://github.com/Siskin-framework/Builder/                       
+;-    .-.
+;-   /'v'\   SISKIN-Builder project file
+;-  (/uOu\)  https://github.com/Siskin-framework/Builder/
 ;-===="="=======================================================================
 
+;; Both are cloned side by side: MathPresso's CMake (3.24+) adds asmjit from
+;; `mathpresso/../asmjit` (ASMJIT_DIR default) as an embedded interface
+;; library (ASMJIT_EMBED, native backend only - ASMJIT_NO_FOREIGN), so its
+;; sources are compiled into `mathpresso` and nothing of asmjit is installed.
 github: @asmjit
 github: @mathpresso
 
-compiler: gcc
-needs:    cmake
-version:  0.2.0
+version: 0.3.0
+
+compiler: clang
+arch:     x64
+optimize: 2
 
 ;define: USE_TRACES
 
-#if Windows? [ define: TO_WINDOWS define: _CRT_SECURE_NO_WARNINGS upx: on needs: msbuild]
-#if macOS?   [ define: TO_OSX     define: HAS_BOOL]
-#if Linux?   [ define: TO_LINUX ]
-
-#if macOS? [
-	sign: on
-	entitlements: %Entitlements.plist
-	define: DISABLE_MANUAL_TARGET_ORDER_BUILD_WARNING
+;- options common for all Rebol extensions ----------------------
+#if Windows? [
+	define: TO_WINDOWS
+	define: _CRT_SECURE_NO_WARNINGS
+	set-env CMAKE_GEN: {-G "Visual Studio 17 2022"}
+]
+#if macOS?   [
+	define: TO_OSX
+	define: HAS_BOOL
+	set-env CMAKE_GEN: ""
+]
+#if Linux? [
+	define: TO_LINUX
+	compiler: gcc
+	set-env CMAKE_GEN: ""
+	cflags: -fvisibility=hidden
 ]
 
-;#if Posix? [
-;	cppflag: "-std=c++11"
-;	lflag:   "-lstdc++"
-;]
+define: ENDIAN_LITTLE
+;; Selects the amalgamated `rebol-extension.h` in the generated header.
+define: REB_EXT
 
 target-x86: [
+	;- On linux needs:  sudo apt install gcc-multilib g++-multilib
 	arch: x86
-	#if Windows? [ defines: [ TO_WIN32 _WIN32 ] ]
-	#if Linux?   [ defines: [ TO_LINUX_X86    ] ]
+	set ARCH_NAME: "x86"
+	set SISKIN_INSTALL_PREFIX: "$SISKIN_INSTALL/$INSTALL_SUFFIX/x86"
+	#if macOS?   [ fail "It is not possible to make 32bit build on macos" ]
+	#if Posix?   [
+		set CMAKE_ARCH: "-DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32"
+	]
+	#if Windows? [
+		set CMAKE_ARCH: "-A Win32"
+	]
 ]
 target-x64: [
 	arch: x64
+	set ARCH_NAME: "x64"
+	set SISKIN_INSTALL_PREFIX: "$SISKIN_INSTALL/$INSTALL_SUFFIX/x64"
 	defines: [
 		_FILE_OFFSET_BITS=64
 		__LP64__ ; has long (integer) 64 bits
 	]
-	#if Windows? [ defines: [ TO_WIN32_X64 _WIN32 ] ]
-	#if Linux?   [ defines: [ TO_LINUX_X64        ] ]
-	#if macOS?   [ defines: [ TO_OSX_X64          ] flags: ["-arch x86_64"] ]
+	#if Windows? [ set CMAKE_ARCH: "-A x64" ]
+	#if Posix?   [ set CMAKE_ARCH: ""]
+	#if macOS?   [
+		flags: ["-arch x86_64"]
+		set CMAKE_ARCH: [
+			"-DCMAKE_OSX_SYSROOT=macosx"
+			"-DCMAKE_OSX_ARCHITECTURES=x86_64"
+			"-DCMAKE_APPLE_SILICON_PROCESSOR=x86_64" ;; make CMake treat the build as x86_64, not the arm64 host
+			"-DCMAKE_OSX_DEPLOYMENT_TARGET=10.9"
+		]
+	]
 ]
-
+;; MathPresso emits code through asmjit's UniCompiler, which has an
+;; AArch64 backend (ASMJIT_UJIT_AARCH64 path in mpcompiler.cpp).
 target-arm64: [
 	arch: arm64
-	;flags: ["-arch arm64"]
-	flags: "-target arm64-apple-darwin"
+	set ARCH_NAME: "arm64"
+	set SISKIN_INSTALL_PREFIX: "$SISKIN_INSTALL/$INSTALL_SUFFIX/arm64"
 	define: _FILE_OFFSET_BITS=64
 	define: __LP64__ ; has long (integer) 64 bits
 	define: __arm64__
-	define: TO_OSX_X64
+	#if Posix? [
+		#either macOS? [
+			flags: "-target arm64-apple-darwin"
+			set CMAKE_ARCH: [
+				"-DCMAKE_OSX_SYSROOT=macosx"
+				"-DCMAKE_OSX_ARCHITECTURES=arm64"
+				"-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
+			]
+		][
+			;- Needs:  sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+			set CMAKE_ARCH: [
+				"-DCMAKE_SYSTEM_NAME=Linux"
+				"-DCMAKE_SYSTEM_PROCESSOR=aarch64"
+				"-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc"
+				"-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"
+			]
+		]
+	]
+	#if Windows? [
+		set CMAKE_ARCH: "-A arm64"
+	]
 ]
 ;----------------------------------------------------------------
 
+
+;----------------------------------------------------------------
+;- extension sources are built out of the Rebol tree -------------
 r3-extension: [
-	optimize: 3
-	source:  %src/
-	include: %mathpresso/src/mathpresso/
+	flags: shared
+	strip: on
+	source: %src/
+	;; MathPresso installs its public header as include/mathpresso/mathpresso.h
+	include: %$SISKIN_INSTALL_PREFIX/include/mathpresso/
+	library: %$SISKIN_INSTALL_PREFIX/lib/
 	files: only [
-		%mathpresso-rebol-extension.c
-		%mathpresso-commands-table.c
-		%mathpresso-command.cpp
+		%mathpresso.c
+		%mathpresso-commands.cpp
+		%gen-mathpresso.c
 	]
-	defines: ENDIAN_LITTLE
-	defines: MATHPRESSO_STATIC
-
-	;cppflags: [fpermissive]
-	flags:   shared
-
+	library: %mathpresso
+	;; mathpresso is built as C++20 (cxx_std_20 is PUBLIC on the target);
+	;; compilers do not default to it yet.
+	cppflag: "-std=c++20"
+	#if macOS? [
+		compiler: clang
+		library: %c++
+		lflag:  "-dynamiclib"
+		cflag:  "-mmacosx-version-min=10.9"
+		;; Export only the extension entry points.
+		lflag: "-Wl,-exported_symbol,_RX_Init -Wl,-exported_symbol,_RX_Quit -Wl,-exported_symbol,_RX_Call -Wl,-exported_symbol,_RX_Abi"
+		lflag: "-Wl,-dead_strip"
+	]
 	#if Posix? [
-		cflags: [-fPIC -pthread ]
+		cflags: [-fPIC -pthread]
 		libraries: [%pthread]
+	]
+	#if Linux? [
+		lflag: "-Wl,--exclude-libs,ALL"
+		lflag: "-Wl,--gc-sections"
+		lflag: "-Wl,--no-undefined"   ;; fail at link time, not at load time
+		library: %stdc++
+		library: %pthread
+		library: %rt  ;; asmjit's shm_open, when libc doesn't provide it
+		library: %m
 	]
 	#if Windows? [
 		upx: on
 	]
-	;- generate main extension header --------------------------------
-	do %src/mathpresso-rebol-extension.r3
+	;- generate the extension header and command table -------------
+	;; Produces %src/gen-mathpresso.h and %src/gen-mathpresso.c, and
+	;; refreshes %README.md's reference section.
+	do %make-extension.r3 [%src/mathpresso.reb "--readme"]
 ]
 
+link-static: [
+	set CMAKE_LINK: "-DMATHPRESSO_STATIC=ON"
+	set INSTALL_SUFFIX: "static"
+	set DIR_SUFFIX: ""
+	;; mathpresso.h uses it to drop the dllimport decoration
+	define: MATHPRESSO_STATIC
+]
+link-shared: [
+	set CMAKE_LINK: "-DMATHPRESSO_STATIC=OFF"
+	set INSTALL_SUFFIX: "shared"
+	set DIR_SUFFIX: "-shared"
+]
 
-
+cmake-build: [
+	set CMAKE_COMMON: [
+		"-DCMAKE_BUILD_TYPE=Release"
+		"-DCMAKE_VERBOSE_MAKEFILE=OFF"
+		"-DCMAKE_POSITION_INDEPENDENT_CODE=ON" ;; linked into a shared extension
+		"-DCMAKE_INSTALL_LIBDIR=lib"           ;; not lib64 or a multiarch dir
+		"-DMATHPRESSO_TEST=OFF"
+		"-DCMAKE_INSTALL_PREFIX=$SISKIN_INSTALL_PREFIX"
+	;- Above defined based on target
+		"$CMAKE_ARCH"
+		"$CMAKE_LINK"
+	]
+	cmd "cmake --fresh -B $SISKIN_TEMP/mathpresso-$ARCH_NAME$DIR_SUFFIX $CMAKE_GEN -S mathpresso $CMAKE_COMMON"
+	cmd "cmake --build    $SISKIN_TEMP/mathpresso-$ARCH_NAME$DIR_SUFFIX --config release -j 8"
+	cmd "cmake --install  $SISKIN_TEMP/mathpresso-$ARCH_NAME$DIR_SUFFIX --config release"
+]
 
 eggs: [
-	#if Windows? [
-		"Make MathPresso static library (cmake) - x86" [
-			name: %static-lib-x86
-			arch: x86
-			cmd %build/_static_x86/ "cmake ../../mathpresso/ -A Win32 -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
-			cmd %build/_static_x86/ {msbuild mathpresso.sln /p:Configuration=Release /p:Platform=Win32}
-		]
-		"Make MathPresso static library (cmake) - x64" [
-			name: %static-lib-x64
-			arch: x64
-			cmd %build/_static_x64/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release"
-			cmd %build/_static_x64/ {msbuild mathpresso.sln /p:Configuration=Release /p:Platform=x64}
-		]
-		"Rebol/MathPresso extension - x86" [
-			name: %mathpresso-windows-x86
-			:r3-extension
-			:target-x86
-			libraries: [%build/_static_x86/Release/mathpresso]
-		]
-		"Rebol/MathPresso extension - x64" [
-			name: %mathpresso-windows-x64
-			:r3-extension
-			:target-x64
-			libraries: [%build/_static_x64/Release/mathpresso]
-		]
+	"Cmake MathPresso static - x86"  [ name: %cmake-mathpresso-x86          :link-static :target-x86   :cmake-build ]
+	"Cmake MathPresso static - x64"  [ name: %cmake-mathpresso-x64          :link-static :target-x64   :cmake-build ]
+	"Cmake MathPresso static - arm64"[ name: %cmake-mathpresso-arm64        :link-static :target-arm64 :cmake-build ]
+	"Cmake MathPresso shared - x86"  [ name: %cmake-mathpresso-shared-x86   :link-shared :target-x86   :cmake-build ]
+	"Cmake MathPresso shared - x64"  [ name: %cmake-mathpresso-shared-x64   :link-shared :target-x64   :cmake-build ]
+	"Cmake MathPresso shared - arm64"[ name: %cmake-mathpresso-shared-arm64 :link-shared :target-arm64 :cmake-build ]
+
+	"Rebol MathPresso static extension: x86" [
+		name: %mathpresso-x86
+		:link-static :target-x86 :r3-extension
+	]
+	"Rebol MathPresso static extension: x64" [
+		name: %mathpresso-x64
+		:link-static :target-x64 :r3-extension
+	]
+	"Rebol MathPresso static extension: arm64" [
+		name: %mathpresso-arm64
+		:link-static :target-arm64 :r3-extension
 	]
 
-
-	#if macOS? [
-		"Make MathPresso static library (cmake) - x64" [
-			name: %static-lib-x64
-			arch: x64
-			cmd %build/_static_x64/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_OSX_SYSROOT=macosx -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9"
-			cmd %build/_static_x64/ {cmake --build .}
-		]
-		;@@ Note: AsmJit now works only on X86 and X64 architectures
-		;"Make Mathpresso static library (cmake) - arm64" [
-		;	arch: arm64
-		;	cmd %_static_arm64/ {cmake ../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_OSX_SYSROOT=macosx -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF }
-		;	cmd %_static_arm64/ {cmake --build .}
-		;]
-		"Rebol/MathPresso extension - x64" [
-			name: %mathpresso-macos-x64
-			:r3-extension
-			:target-x64
-			compiler: clang
-			lflags:   [-dynamiclib]
-			flag:     -mmacosx-version-min=10.9 
-			libraries: [%stdc++ %build/_static_x64/ %mathpresso]
-		]
+	"Rebol MathPresso shared extension: x86" [
+		name: %mathpresso-shared-x86
+		:link-shared :target-x86 :r3-extension
 	]
-
-
-	#if Linux? [
-		"Make 64bit MathPresso static library" [
-			name: %static-lib-x64
-			arch: x64
-			cmd %build/_static_linux/ "cmake ../../mathpresso/ -DMATHPRESSO_STATIC=1 -DMATHPRESSO_TEST=0 -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_BUILD_TYPE=Release"
-			cmd %build/_static_linux/ {cmake --build .}
-		]
-		"Rebol/MathPresso 64bit extension" [
-			name: %mathpresso-linux-x64
-			:r3-extension
-			:target-x64
-			compiler: clang
-			libraries: [%stdc++ %build/_static_linux/ %mathpresso]
-		]
+	"Rebol MathPresso shared extension: x64" [
+		name: %mathpresso-shared-x64
+		:link-shared :target-x64 :r3-extension
+	]
+	"Rebol MathPresso shared extension: arm64" [
+		name: %mathpresso-shared-arm64
+		:link-shared :target-arm64 :r3-extension
 	]
 ]
