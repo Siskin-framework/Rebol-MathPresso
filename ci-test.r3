@@ -253,6 +253,57 @@ vec: make vector! [decimal! 64 [3.0 4.0 0.0]]
 --rejects-- "A too short vector"             [mp/eval :vexpr make vector! [decimal! 64 [1.0]]]
 --rejects-- "A struct of another specification" [mp/eval :vexpr outer]
 
+;;=============================================================================
+group "Evaluating a vector of structs (eval/each)"
+
+pt!:    make struct! [a [double!] b [double!] r [double!]]
+other!: make struct! [x [double!] y [double!]]
+--test-- "Compile for use with a vector of structs" [
+    handle? sexpr: mp/compile pt! "r = a * b"
+]
+vs: make vector! [:pt! 3]
+v: 0.0 foreach s vs [s/a: v + 1 s/b: v: v + 2]
+
+--test-- "Returns the last result" [is? mp/eval/each :sexpr vs 30.0]
+--test-- "Every element is written" [
+    is? reduce [vs/1/r vs/2/r vs/3/r] [2.0 12.0 30.0]
+]
+--test-- "/part limits the number of elements" [
+    vs/1/r: 0.0  vs/2/r: 0.0  vs/3/r: 0.0
+    all [
+        12.0 == mp/eval/each/part :sexpr vs 2
+        is? reduce [vs/1/r vs/2/r vs/3/r] [2.0 12.0 0.0]
+    ]
+]
+--test-- "/part larger than the vector stops at its tail" [
+    is? mp/eval/each/part :sexpr vs 10 30.0
+]
+--test-- "Evaluation starts at the vector's index" [
+    vs/1/r: 0.0
+    all [
+        30.0 == mp/eval/each :sexpr skip vs 2
+        is? vs/1/r 0.0
+    ]
+]
+--test-- "Nothing to evaluate returns none" [none? mp/eval/each :sexpr tail vs]
+--test-- "/part 0 returns none"             [none? mp/eval/each/part :sexpr vs 0]
+--test-- "Same results as evaluating each element on its own" [
+    v2: make vector! [:pt! 2]
+    v2/1: make pt! [ 1.5 2.0]
+    v2/2: make pt! [-3.0 0.5]
+    mp/eval/each :sexpr v2
+    either system/version > 3.22.12 [
+        is? reduce [v2/1/r v2/2/r] reduce [mp/eval :sexpr v2/1  mp/eval :sexpr v2/2]
+    ][  is? reduce [v2/1/r v2/2/r] [3.0 -1.5] ]
+    
+]
+--rejects-- "/each with a vector of doubles" [
+    mp/eval/each :sexpr make vector! [decimal! 64 [1.0 2.0 0.0]]
+]
+--rejects-- "/each with a single struct" [mp/eval/each :sexpr make pt! []]
+--rejects-- "Elements of another specification" [mp/eval/each :sexpr make vector! [other! 2]]
+--rejects-- "A vector of structs without /each" [mp/eval :sexpr vs]
+
 print-hline
 ;---------------------------------------------------------------------
 print as-yellow "=== Graph2D example ================================"

@@ -46,6 +46,7 @@ static const char* ERR_RAW_STRUCT    = "Struct does not allow raw modification!"
 static const char* ERR_NO_EXPRESSION = "Command needs a valid MPExpression handle!";
 static const char* ERR_NOT_DOUBLES   = "Command needs a vector with double values!";
 static const char* ERR_SHORT_DATA    = "Insufficient size of input data!";
+static const char* ERR_NOT_STRUCTS   = "/each needs a vector of structs!";
 
 // Receives messages from MathPresso's parser, optimizer and compiler.
 //
@@ -209,6 +210,53 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	RETURN_HANDLE(hob);
 }
 
+// eval/each: evaluates the expression for every struct of a vector of
+// structs, starting at the vector's index, in one C loop. Returns the result
+// of the last evaluation, or none when there was nothing to evaluate.
+//
+// Arguments: 2 = variables, 3 = /each, 4 = /part, 5 = count.
+static int Eval_Each(RXIFRM *frm, MPExpression *mpe) {
+	REBSER *ser, *fields;
+	REBSTI *info;
+	REBYTE *data;
+	REBCNT  index, tail, wide, count, n;
+	double  result = 0.0;
+
+	if (RXA_TYPE(frm, 2) != RXT_VECTOR || RXI_VECTOR_TYPE(RXA_VECTOR_INFO(frm, 2)) != VTSTRUCT)
+		RETURN_ERROR(ERR_NOT_STRUCTS);
+
+	ser = RXA_VECTOR_SERIES(frm, 2);
+	// A vector of structs keeps its element's field list in the series link
+	// (see VAL_VEC_STRUCT), so the elements are checked like a struct would be.
+	fields = ser->series;
+	if (fields == NULL) RETURN_ERROR(ERR_BAD_STRUCT);
+	info = FIELDS_INFO(fields);
+	if (info->id != mpe->struct_id) RETURN_ERROR(ERR_STRUCT_ID);
+	// The expression writes into the data.
+	if (info->flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED)) RETURN_ERROR(ERR_RAW_STRUCT);
+
+	// The element size is kept as the series width.
+	wide = SERIES_WIDE(ser);
+	if (wide < mpe->bytes_needed) RETURN_ERROR(ERR_SHORT_DATA);
+
+	index = RXA_VECTOR_INDEX(frm, 2);
+	tail  = SERIES_TAIL(ser);
+	count = index < tail ? tail - index : 0;
+	if (RXA_REF(frm, 4)) {
+		i64 part = RXA_INT64(frm, 5);
+		if (part < 0) part = 0;
+		if ((u64)part < count) count = (REBCNT)part;
+	}
+	if (count == 0) return RXR_NONE;
+
+	Expression *e = (Expression*)mpe->expression;
+	data = SERIES_SKIP(ser, index);
+	for (n = 0; n < count; n++, data += wide) {
+		result = e->evaluate(data);
+	}
+	RETURN_DOUBLE(result);
+}
+
 COMMAND cmd_mathpresso_eval(RXIFRM *frm, void *ctx) {
 	MPExpression *mpe;
 	REBYTE *bin;
@@ -216,6 +264,8 @@ COMMAND cmd_mathpresso_eval(RXIFRM *frm, void *ctx) {
 
 	mpe = ARG_MPExpression(1);
 	if (mpe == NULL || mpe->expression == NULL) RETURN_ERROR(ERR_NO_EXPRESSION);
+
+	if (RXA_REF(frm, 3)) return Eval_Each(frm, mpe);
 
 	if (RXA_TYPE(frm, 2) == RXT_STRUCT) {
 		RXISTRU stru;

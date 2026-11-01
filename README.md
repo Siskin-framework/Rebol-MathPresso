@@ -72,6 +72,9 @@ Compile math expression using the given context
 Evaluate precompiled math expressions using given variables
 * `expression` `[handle!]` MPExpression
 * `variables` `[vector! struct!]` Variables in a double format
+* `/each` Evaluate for every struct in a vector of structs (from its index); returns the last result
+* `/part`
+* `count` `[integer!]` Maximum number of elements to evaluate (with /each)
 
 #### `set-options` `:flags`
 MathPresso options used when expression is being compiled
