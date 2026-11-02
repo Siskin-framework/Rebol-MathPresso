@@ -38,9 +38,19 @@ particle!: make struct! [
     r    [double!]  g    [double!]  b [double!]   ;; colour computed for drawing
 ]
 
+;; Constants of the simulation. MathPresso folds them into the compiled code,
+;; and they need no fields in the struct.
+world: mp/context/with particle! compose [
+    width   (size/x)
+    height  (size/y)
+    gravity 420.0       ;; pixels per second squared
+    dt      (1.0 / 60)  ;; one step per frame at 60 fps
+    drag    0.995
+]
+
 ;; The simulation step. MathPresso has no `if`, so the comparisons (which give
-;; 1.0 or 0.0) are used as masks. `$`-words are replaced by the values below.
-physics: reword {
+;; 1.0 or 0.0) are used as masks.
+physics: {
 // Respawn the particle once its life is over (`dead` is 1.0 or 0.0, so
 // every `+ dead * (new - old)` below is a branch-free conditional set).
 var dead = age >= life;
@@ -50,11 +60,11 @@ var r2  = frac(sin(seed * 78.233)  * 43758.5453);
 var r3  = frac(sin(seed * 39.3468) * 24634.6345);
 var r4  = frac(sin(seed * 93.9898) * 15731.743);
 var src = floor(r4 * 3);                       // which of the three fountains
-var ex  = $W * (0.2 + 0.3 * src) + 40 * sin(t * 0.7 + src * 2);
+var ex  = width * (0.2 + 0.3 * src) + 40 * sin(t * 0.7 + src * 2);
 var ang = -PI / 2 + (r1 - 0.5) * 0.5 + 0.15 * sin(t * 0.9 + src);
 var spd = 380 + r2 * 160;
 x    = x    + dead * (ex - x);
-y    = y    + dead * ($H - 6 - y);
+y    = y    + dead * (height - 6 - y);
 vx   = vx   + dead * (cos(ang) * spd - vx);
 vy   = vy   + dead * (sin(ang) * spd - vy);
 life = life + dead * (1.8 + r3 * 1.6 - life);
@@ -62,15 +72,15 @@ hue  = hue  + dead * (frac(src / 3 + t * 0.03 + r3 * 0.08) - hue);
 age  = age  * (1 - dead);
 
 // Integrate: gravity, air drag, and a lossy bounce on the floor.
-vy  = (vy + $G * $DT) * $DRAG;
-vx  = vx * $DRAG;
-x   = x + vx * $DT;
-y   = y + vy * $DT;
-var hit = (y > $H - 4) * (vy > 0);
+vy  = (vy + gravity * dt) * drag;
+vx  = vx * drag;
+x   = x + vx * dt;
+y   = y + vy * dt;
+var hit = (y > height - 4) * (vy > 0);
 vy  = vy - hit * 1.55 * vy;
-y   = min(y, $H - 4);
-age = age + $DT;
-t   = t + $DT;
+y   = min(y, height - 4);
+age = age + dt;
+t   = t + dt;
 
 // Colour: a cosine palette on `hue`, white-hot at birth, fading out.
 var k   = max(0, 1 - age / life);
@@ -78,15 +88,9 @@ var hot = max(0, 1 - age * 5) * 0.8;
 r = min(255, 255 * (k * (0.5 + 0.5 * cos(2 * PI * hue)) + hot));
 g = min(255, 255 * (k * (0.5 + 0.5 * cos(2 * PI * (hue - 0.333))) + hot));
 b = min(255, 255 * (k * (0.5 + 0.5 * cos(2 * PI * (hue - 0.667))) + hot));
-} compose [
-    W    (size/x)
-    H    (size/y)
-    G    420.0       ;; gravity in pixels per second squared
-    DT   (1.0 / 60)  ;; one step per frame at 60 fps
-    DRAG 0.995
-]
+}
 
-step: mp/compile particle! physics
+step: mp/compile :world physics
 
 ;; All particles start below the screen with staggered lives, so they are
 ;; born gradually instead of all in the very first step.

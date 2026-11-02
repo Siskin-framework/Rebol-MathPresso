@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "mathpresso.h"
 extern "C" {
 	#include "gen-mathpresso.h"
@@ -131,7 +132,80 @@ int MPContext_free(void *hndl) {
 
 //== commands =================================================================
 
-COMMAND cmd_mathpresso_context(RXIFRM *frm, void *ctx) {
+// Returns a newly allocated copy of a constant's name (free it), or NULL
+// when the value cannot name a constant.
+//
+// A word arrives as its canonical symbol, so its spelling is that of the
+// first casing Rebol met - `Scale` may come back as `scale`. MathPresso
+// names are case-sensitive, so a ref! (`@Scale`) is accepted for a name
+// which must be kept exactly as written.
+static char* Constant_Name(REBCNT type, RXIARG *val) {
+	if (type == RXT_WORD || type == RXT_SET_WORD || type == RXT_LIT_WORD)
+		return (char*)RL_WORD_STRING(val->int32a); // allocates a new string!
+
+	if (type == RXT_REF) {
+		// Strings are UTF-8 encoded byte series.
+		REBSER *ser   = (REBSER*)val->series;
+		REBCNT  index = val->index;
+		REBCNT  tail  = SERIES_TAIL(ser);
+		REBCNT  len   = index < tail ? tail - index : 0;
+		char   *str;
+		if (len == 0) return NULL;
+		str = (char*)malloc(len + 1);
+		if (!str) return NULL;
+		memcpy(str, SERIES_SKIP(ser, index), len);
+		str[len] = 0;
+		return str;
+	}
+	return NULL;
+}
+
+// Adds name/number pairs from a block (starting at `index`) as constants.
+// Returns NULL on success, otherwise the error message (in MPError).
+static const char* Add_Constants(Context *mpCtx, REBSER *blk, REBCNT index) {
+	REBCNT tail = (REBCNT)RL_SERIES(blk, RXI_SER_TAIL);
+	RXIARG name, value;
+	REBCNT name_type, value_type;
+	char  *str;
+	double num;
+	Error err;
+
+	for (REBCNT i = index; i < tail; i += 2) {
+		name_type = RL_GET_VALUE(blk, i, &name);
+		str = Constant_Name(name_type, &name);
+		if (!str) return "Constant name must be a word or ref!";
+
+		value_type = (i + 1 < tail) ? RL_GET_VALUE(blk, i + 1, &value) : RXT_END;
+		if (value_type == RXT_INTEGER)      num = (double)value.int64;
+		else if (value_type == RXT_DECIMAL) num = value.dec64;
+		else {
+			snprintf(MPError, sizeof(MPError), "Constant `%s` needs a number!", str);
+			free(str);
+			return MPError;
+		}
+
+		// The name is copied by MathPresso.
+		err = mpCtx->add_constant(str, num);
+		if (err != kErrorOk) {
+			if (err == kErrorSymbolAlreadyExists)
+				snprintf(MPError, sizeof(MPError), "Constant `%s` is already defined!", str);
+			else
+				snprintf(MPError, sizeof(MPError), "Constant `%s`: %s", str, Error_Text(err));
+			free(str);
+			return MPError;
+		}
+		free(str);
+	}
+	return NULL;
+}
+
+// Creates a MPContext handle for the struct in argument 1 and returns it
+// in argument 1. Constants are added when `consts` is not NULL.
+//
+// Shared by `context` and by `compile` given a struct, which is why the
+// constants are passed in rather than read from the frame: the two commands
+// have different arguments after the first one.
+static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 	RXISTRU    stru;
 	REBSTF    *field;
 	REBHOB    *hob;
@@ -162,7 +236,25 @@ COMMAND cmd_mathpresso_context(RXIFRM *frm, void *ctx) {
 			mpc->bytes_needed += sizeof(REBDEC);
 		}
 	}
+
+	// After the variables, so a constant cannot shadow a struct field.
+	if (consts) {
+		const char *msg = Add_Constants(mpCtx, consts, index);
+		if (msg) {
+			delete mpCtx;
+			mpc->context = NULL;
+			RL_FREE_HANDLE_CONTEXT(hob);
+			RETURN_ERROR(msg);
+		}
+	}
 	RETURN_HANDLE(hob);
+}
+
+// Arguments: 1 = spec, 2 = /with, 3 = constants.
+COMMAND cmd_mathpresso_context(RXIFRM *frm, void *ctx) {
+	if (RXA_REF(frm, 2))
+		return Make_MPContext(frm, (REBSER*)RXA_SERIES(frm, 3), RXA_INDEX(frm, 3));
+	return Make_MPContext(frm, NULL, 0);
 }
 
 COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
@@ -176,7 +268,7 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 
 	if (RXA_TYPE(frm, 1) == RXT_STRUCT) {
 		// Replaces the struct in arg 1 with a temporary MPContext handle.
-		int result = cmd_mathpresso_context(frm, ctx);
+		int result = Make_MPContext(frm, NULL, 0);
 		if (result != RXR_VALUE) return result;
 	}
 

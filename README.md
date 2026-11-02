@@ -60,6 +60,8 @@ Feel free to [let me know](https://gitter.im/rebol3/community) if something coul
 #### `context` `:spec`
 Initialize MPContext handle with given variable names
 * `spec` `[struct!]` Struct with double fields used as expression variables
+* `/with` Add named constants (folded when an expression is compiled)
+* `constants` `[block!]` Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case
 
 #### `compile` `:context` `:expression`
 Compile math expression using the given context

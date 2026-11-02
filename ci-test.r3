@@ -304,6 +304,48 @@ v: 0.0 foreach s vs [s/a: v + 1 s/b: v: v + 2]
 --rejects-- "Elements of another specification" [mp/eval/each :sexpr make vector! [other! 2]]
 --rejects-- "A vector of structs without /each" [mp/eval :sexpr vs]
 
+;;=============================================================================
+group "Constants (context/with)"
+
+kv!: make struct! [x [double!] y [double!]]
+--test-- "Constants are usable in expressions" [
+    all [
+        handle? cctx:  mp/context/with kv! [gain 2.5 offset: 10]
+        handle? cexpr: mp/compile :cctx "y = x * gain + offset"
+        kd: make kv! [x: 2.0]
+        15.0 == mp/eval :cexpr kd
+        is? kd/y 15.0
+    ]
+]
+--test-- "A context with constants can be shared" [
+    kd: make kv! [x: 4.0]
+    is? mp/eval mp/compile :cctx "x - offset" kd -6.0
+]
+--test-- "A context without /with has no constants" [
+    error? try [mp/compile mp/context kv! "y = x * gain"]
+]
+;; MathPresso names are case-sensitive, while Rebol words are not: a word
+;; arrives in its canonical spelling (the first casing Rebol met), so the
+;; word `scale` below turns `Scale` into `scale`. A ref! keeps the name as
+;; written.
+scale: none
+--test-- "A ref! constant keeps the case it is written in" [
+    is? mp/eval mp/compile mp/context/with kv! [@Scale 3] "x * Scale" make kv! [x: 2.0] 6.0
+]
+--test-- "A word constant takes its canonical spelling" [
+    is? mp/eval mp/compile mp/context/with kv! [Scale 3] "x * scale" make kv! [x: 2.0] 6.0
+]
+--test-- "Ref! and word names can be mixed" [
+    is? mp/eval mp/compile mp/context/with kv! [@Gain 2 offset 1] "x * Gain + offset" make kv! [x: 2.0] 5.0
+]
+--rejects-- "A constant without a value"       [mp/context/with kv! [gain]]
+--rejects-- "A constant which is not a number" [mp/context/with kv! [gain "2.5"]]
+--rejects-- "A constant named by a number"     [mp/context/with kv! [1 2]]
+--rejects-- "A constant named by a string"     [mp/context/with kv! ["gain" 2]]
+--rejects-- "A constant named like a field"    [mp/context/with kv! [x 1]]
+--rejects-- "A constant named like a built-in" [mp/context/with kv! [@PI 3]]  ;; a word would become `pi`
+--rejects-- "Assigning to a constant"          [mp/compile :cctx "gain = 1"]
+
 print-hline
 ;---------------------------------------------------------------------
 print as-yellow "=== Graph2D example ================================"
