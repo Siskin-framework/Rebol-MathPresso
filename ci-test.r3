@@ -494,6 +494,61 @@ arr!: make struct! [tag [uint8!] v [double! [3]] s [double!]]
 ]
 
 ;;=============================================================================
+group "Read-only fields (context/read-only)"
+
+--test-- "A read-only field can be read" [
+    all [
+        handle? roctx: mp/context/read-only kv! [x]
+        kd: make kv! [x: 2.0]
+        6.0 == mp/eval mp/compile :roctx "y = x * 3" kd
+        is? kd/y 6.0
+    ]
+]
+--test-- "Assigning to a read-only field does not compile" [
+    all [
+        error? err: try [mp/compile :roctx "x = 1"]
+        did find form err "read-only"
+    ]
+]
+--test-- "Local variables stay writable" [
+    is? mp/eval mp/compile :roctx "var a = x; a = a + 1; y = a" make kv! [x: 2.0] 3.0
+]
+--test-- "An array's name makes all its elements read-only" [
+    all [
+        handle? aroctx: mp/context/read-only arr! [v]
+        handle? mp/compile :aroctx "s = v_1 + v_3"
+        error? try [mp/compile :aroctx "v_1 = 1"]
+        error? try [mp/compile :aroctx "v_3 = 1"]
+    ]
+]
+--test-- "/with and /read-only together" [
+    is? mp/eval mp/compile mp/context/with/read-only kv! [k 2] [x] "y = x * k" make kv! [x: 4.0] 8.0
+]
+--rejects-- "A read-only name which is no field"      [mp/context/read-only kv! [nope]]
+--rejects-- "A read-only name of a non-double field"  [mp/context/read-only arr! [tag]]
+--rejects-- "A read-only name which is no word"       [mp/context/read-only kv! ["x"]]
+
+;; With every variable read-only an expression cannot write into the data,
+;; so a struct holding Rebol values (not writable raw) may be read.
+pv!: make struct! [x [double!] v [rebval!]]
+--test-- "A fully read-only context reads a struct holding Rebol values" [
+    pd: make pv! [x: 2.5]
+    pd/v: "kept"
+    all [
+        5.0 == mp/eval mp/compile mp/context/read-only pv! [x] "x * 2" pd
+        is? pd/x 2.5
+        is? pd/v "kept"
+    ]
+]
+--rejects-- "Without /read-only that struct is still refused" [
+    mp/eval mp/compile pv! "x * 2" make pv! [x: 2.5]
+]
+--rejects-- "A partly read-only context is still refused" [
+    mp/eval mp/compile mp/context/read-only make struct! [x [double!] y [double!] v [rebval!]] [x] "x * 2"
+        make struct! [x [double!] y [double!] v [rebval!]]
+]
+
+;;=============================================================================
 group "Extra functions"
 
 fx!: make struct! [x [double!] r [double!]]

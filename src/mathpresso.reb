@@ -46,12 +46,14 @@ typedef struct MPExpression_t {
 	void* expression;  // compiled mathpresso::Expression
 	u32   struct_id;
 	u32   bytes_needed;
+	u32   read_only;     // 1 when it cannot write into the data
 } MPExpression;
 
 typedef struct MPContext_t {
 	void* context;     // initialized mathpresso::Context
 	u32   struct_id;
 	u32   bytes_needed;
+	u32   read_only;     // 1 when all its variables are read-only
 } MPContext;
 
 int MPExpression_free(void *hndl);
@@ -72,6 +74,8 @@ commands: [
 		spec [struct!] "Struct with double fields used as expression variables (array field `v [double! [3]]` gives `v_1 v_2 v_3`)"
 		/with "Add named constants (folded when an expression is compiled)"
 		 constants [block!] "Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case"
+		/read-only "Make fields read-only, so an expression assigning to them does not compile"
+		 fields [block!] {Names of double! fields (an array's name covers all its elements). When all are read-only, eval accepts also structs which must not be written raw}
 	]
 	compile: [
 		{Compile math expression using the given context. Besides MathPresso's built-ins, these functions are available: cbrt exp2 expm1 log1p erf erfc tgamma lgamma sign hash (1 argument), fmod step (2), clamp mix smoothstep (3). A struct field or constant of the same name hides the function.}

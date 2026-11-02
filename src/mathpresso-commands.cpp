@@ -265,9 +265,9 @@ static void Add_Functions(Context *mpCtx) {
 // Adds a plain `double!` field as a variable. Returns FALSE with the message
 // in MPError when the name is already taken (e.g. by `v_1` of an array `v`
 // declared before it). MathPresso copies the name, so ours is freed.
-static bool Add_Field(Context *mpCtx, REBSTF *field) {
+static bool Add_Field(Context *mpCtx, REBSTF *field, unsigned int flags) {
 	char  *name = (char*)RL_WORD_STRING(field->sym); // allocates a new string!
-	Error  err  = mpCtx->add_variable(name, (int)field->offset);
+	Error  err  = mpCtx->add_variable(name, (int)field->offset, flags);
 
 	if (err != kErrorOk) {
 		if (err == kErrorSymbolAlreadyExists)
@@ -282,14 +282,14 @@ static bool Add_Field(Context *mpCtx, REBSTF *field) {
 // Adds every element of a `double!` array field as a variable named
 // `<field>_<n>` (1-based). Returns FALSE with the message in MPError when a
 // name is already taken (e.g. by a plain field called `v_1`).
-static bool Add_Array_Field(Context *mpCtx, REBSTF *field) {
+static bool Add_Array_Field(Context *mpCtx, REBSTF *field, unsigned int flags) {
 	char  *base = (char*)RL_WORD_STRING(field->sym); // allocates a new string!
 	char   name[256];
 	Error  err;
 
 	for (REBCNT n = 0; n < field->dimension; n++) {
 		snprintf(name, sizeof(name), "%s_%u", base, n + 1);
-		err = mpCtx->add_variable(name, (int)(field->offset + n * field->size));
+		err = mpCtx->add_variable(name, (int)(field->offset + n * field->size), flags);
 		if (err != kErrorOk) {
 			if (err == kErrorSymbolAlreadyExists)
 				snprintf(MPError, sizeof(MPError), "Variable `%s` of array field `%s` is already defined!", name, base);
@@ -303,23 +303,74 @@ static bool Add_Array_Field(Context *mpCtx, REBSTF *field) {
 	return true;
 }
 
+// Fields named in the `/read-only` block. A word arrives as its canonical
+// symbol, which is also what a struct field's `sym` holds, so they compare
+// directly; an array's name stands for all its elements.
+typedef struct {
+	REBSER *block;  // NULL = no field is read-only
+	REBCNT  index;
+} ReadOnlyList;
+
+static bool Is_Read_Only(const ReadOnlyList *ro, REBCNT sym) {
+	RXIARG val;
+	REBCNT type, tail;
+	if (!ro->block) return false;
+	tail = (REBCNT)RL_SERIES(ro->block, RXI_SER_TAIL);
+	for (REBCNT i = ro->index; i < tail; i++) {
+		type = RL_GET_VALUE(ro->block, i, &val);
+		if ((type == RXT_WORD || type == RXT_SET_WORD || type == RXT_LIT_WORD) && (REBCNT)val.int32a == sym)
+			return true;
+	}
+	return false;
+}
+
+// Every name in the block must be a word naming a `double!` field. Returns
+// NULL when it does, otherwise the error message (in MPError).
+static const char* Check_Read_Only(const ReadOnlyList *ro, RXISTRU *stru) {
+	RXIARG  val;
+	REBCNT  type, tail, i, f;
+	REBSTF *field;
+	if (!ro->block) return NULL;
+	tail = (REBCNT)RL_SERIES(ro->block, RXI_SER_TAIL);
+	for (i = ro->index; i < tail; i++) {
+		type = RL_GET_VALUE(ro->block, i, &val);
+		if (type != RXT_WORD && type != RXT_SET_WORD && type != RXT_LIT_WORD)
+			return "Read-only fields must be named by words!";
+		field = RXI_STRUCT_FIELDS(stru);
+		for (f = 0; f < stru->count; ++f, ++field) {
+			if (field->type == STRUCT_TYPE_DOUBLE && field->sym == (REBCNT)val.int32a) break;
+		}
+		if (f >= stru->count) {
+			char *name = (char*)RL_WORD_STRING(val.int32a); // allocates a new string!
+			snprintf(MPError, sizeof(MPError), "No double! field `%s` to make read-only!", name);
+			free(name);
+			return MPError;
+		}
+	}
+	return NULL;
+}
+
 // Creates a MPContext handle for the struct in argument 1 and returns it
-// in argument 1. Constants are added when `consts` is not NULL.
+// in argument 1. Constants are added when `consts` is not NULL, and the
+// fields named in `ro` become read-only.
 //
 // Shared by `context` and by `compile` given a struct, which is why the
-// constants are passed in rather than read from the frame: the two commands
+// blocks are passed in rather than read from the frame: the two commands
 // have different arguments after the first one.
-static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
+static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index, const ReadOnlyList *ro) {
 	RXISTRU    stru;
 	REBSTF    *field;
 	REBHOB    *hob;
 	MPContext *mpc;
 	Context   *mpCtx;
 	REBCNT     i;
+	const char *msg = NULL;
+	unsigned int flags;
 
 	// One lookup gives the spec id and the field list of THIS struct,
 	// whether it is a root struct or a nested view.
 	if (!RXA_STRUCT_INFO(frm, 1, &stru)) RETURN_ERROR(ERR_BAD_STRUCT);
+	if ((msg = Check_Read_Only(ro, &stru))) RETURN_ERROR(msg);
 
 	hob = RL_MAKE_HANDLE_CONTEXT(Handle_MPContext);
 	if (hob == NULL) return RXR_NONE;
@@ -328,6 +379,9 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 	mpc->context = mpCtx = new Context();
 	mpc->struct_id = stru.id;
 	mpc->bytes_needed = 0;
+	// Cleared by the first writable variable. With none, no expression of
+	// this context can write into the data.
+	mpc->read_only = 1;
 
 	debug_print("New MPContext: %p\n", (void*)mpCtx);
 
@@ -341,47 +395,45 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 		if (field->type != STRUCT_TYPE_DOUBLE) continue;
 		REBCNT end = field->offset + (field->array ? field->dimension : 1) * sizeof(REBDEC);
 		if (end > mpc->bytes_needed) mpc->bytes_needed = end;
-		if (field->array) {
-			// MathPresso has no indexing, so every element of an array field
-			// becomes its own variable: `v [double! [3]]` is `v_1 v_2 v_3`
-			// (1-based, like Rebol's `v/1`).
-			if (!Add_Array_Field(mpCtx, field)) {
-				delete mpCtx;
-				mpc->context = NULL;
-				RL_FREE_HANDLE_CONTEXT(hob);
-				RETURN_ERROR(MPError);
-			}
-		} else if (!Add_Field(mpCtx, field)) {
-			delete mpCtx;
-			mpc->context = NULL;
-			RL_FREE_HANDLE_CONTEXT(hob);
-			RETURN_ERROR(MPError);
+
+		flags = Is_Read_Only(ro, field->sym) ? kVariableRO : kVariableRW;
+		if (flags == kVariableRW) mpc->read_only = 0;
+
+		// MathPresso has no indexing, so every element of an array field
+		// becomes its own variable: `v [double! [3]]` is `v_1 v_2 v_3`
+		// (1-based, like Rebol's `v/1`).
+		if (field->array ? !Add_Array_Field(mpCtx, field, flags) : !Add_Field(mpCtx, field, flags)) {
+			msg = MPError;
+			goto fail;
 		}
 	}
 
 	// After the variables, so a constant cannot shadow a struct field.
-	if (consts) {
-		const char *msg = Add_Constants(mpCtx, consts, index);
-		if (msg) {
-			delete mpCtx;
-			mpc->context = NULL;
-			RL_FREE_HANDLE_CONTEXT(hob);
-			RETURN_ERROR(msg);
-		}
-	}
+	if (consts && (msg = Add_Constants(mpCtx, consts, index))) goto fail;
 
 	// Last, so that a struct field or a constant of the same name wins over
 	// an extra function (e.g. a field called `step`).
 	Add_Functions(mpCtx);
 
 	RETURN_HANDLE(hob);
+
+fail:
+	delete mpCtx;
+	mpc->context = NULL;
+	RL_FREE_HANDLE_CONTEXT(hob);
+	RETURN_ERROR(msg);
 }
 
-// Arguments: 1 = spec, 2 = /with, 3 = constants.
+// Arguments: 1 = spec, 2 = /with, 3 = constants, 4 = /read-only, 5 = fields.
 COMMAND cmd_mathpresso_context(RXIFRM *frm, void *ctx) {
+	ReadOnlyList ro = { NULL, 0 };
+	if (RXA_REF(frm, 4)) {
+		ro.block = (REBSER*)RXA_SERIES(frm, 5);
+		ro.index = RXA_INDEX(frm, 5);
+	}
 	if (RXA_REF(frm, 2))
-		return Make_MPContext(frm, (REBSER*)RXA_SERIES(frm, 3), RXA_INDEX(frm, 3));
-	return Make_MPContext(frm, NULL, 0);
+		return Make_MPContext(frm, (REBSER*)RXA_SERIES(frm, 3), RXA_INDEX(frm, 3), &ro);
+	return Make_MPContext(frm, NULL, 0, &ro);
 }
 
 COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
@@ -404,7 +456,8 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 
 	if (RXA_TYPE(frm, 1) == RXT_STRUCT) {
 		// Replaces the struct in arg 1 with a temporary MPContext handle.
-		int result = Make_MPContext(frm, NULL, 0);
+		ReadOnlyList ro = { NULL, 0 };
+		int result = Make_MPContext(frm, NULL, 0, &ro);
 		if (result != RXR_VALUE) return result;
 	}
 
@@ -427,6 +480,7 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	mpe->expression = mpExp = new Expression();
 	mpe->struct_id = mpc->struct_id;
 	mpe->bytes_needed = mpc->bytes_needed;
+	mpe->read_only = mpc->read_only;
 	debug_print("New MPExpression: %p for context: %p options: %u\n", (void*)mpExp, (void*)mpCtx, options);
 
 	// And compile it...
@@ -463,8 +517,10 @@ static int Eval_Each(RXIFRM *frm, MPExpression *mpe) {
 	if (fields == NULL) RETURN_ERROR(ERR_BAD_STRUCT);
 	info = FIELDS_INFO(fields);
 	if (info->id != mpe->struct_id) RETURN_ERROR(ERR_STRUCT_ID);
-	// The expression writes into the data.
-	if (info->flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED)) RETURN_ERROR(ERR_RAW_STRUCT);
+	// The expression writes into the data - unless all its variables are
+	// read-only.
+	if (!mpe->read_only && (info->flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED)))
+		RETURN_ERROR(ERR_RAW_STRUCT);
 
 	// The element size is kept as the series width.
 	wide = SERIES_WIDE(ser);
@@ -503,8 +559,9 @@ COMMAND cmd_mathpresso_eval(RXIFRM *frm, void *ctx) {
 		// Data and size of THIS struct - a nested view included.
 		if (!RXA_STRUCT_INFO(frm, 2, &stru)) RETURN_ERROR(ERR_BAD_STRUCT);
 		if (mpe->struct_id != stru.id)        RETURN_ERROR(ERR_STRUCT_ID);
-		// The expression writes into the data.
-		if (!RXI_STRUCT_WRITABLE(&stru))      RETURN_ERROR(ERR_RAW_STRUCT);
+		// The expression writes into the data - unless all its variables
+		// are read-only, then it may read even data it must not write.
+		if (!mpe->read_only && !RXI_STRUCT_WRITABLE(&stru)) RETURN_ERROR(ERR_RAW_STRUCT);
 		len = stru.size;
 		bin = stru.data;
 	} else {
