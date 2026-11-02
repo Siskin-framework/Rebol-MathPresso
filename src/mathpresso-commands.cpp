@@ -253,9 +253,14 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 
 	mpCtx->add_builtins();
 
+	// `bytes_needed` is how far into the data the expression may read or
+	// write: the end of the last double variable, not their total size -
+	// fields of other types before or between them take space too.
 	field = RXI_STRUCT_FIELDS(&stru);
 	for (i = 0; i < stru.count; ++i, ++field) {
 		if (field->type != STRUCT_TYPE_DOUBLE) continue;
+		REBCNT end = field->offset + (field->array ? field->dimension : 1) * sizeof(REBDEC);
+		if (end > mpc->bytes_needed) mpc->bytes_needed = end;
 		if (field->array) {
 			// MathPresso has no indexing, so every element of an array field
 			// becomes its own variable: `v [double! [3]]` is `v_1 v_2 v_3`
@@ -266,10 +271,8 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 				RL_FREE_HANDLE_CONTEXT(hob);
 				RETURN_ERROR(MPError);
 			}
-			mpc->bytes_needed += field->dimension * sizeof(REBDEC);
 		} else {
 			mpCtx->add_variable(cs_cast(RL_WORD_STRING(field->sym)), field->offset);
-			mpc->bytes_needed += sizeof(REBDEC);
 		}
 	}
 

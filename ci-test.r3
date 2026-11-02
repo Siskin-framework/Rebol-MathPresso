@@ -251,6 +251,32 @@ vec: make vector! [decimal! 64 [3.0 4.0 0.0]]
 --test-- "The vector is written"             [is? vec/3 12.0]
 --rejects-- "A vector of integers"           [mp/eval :vexpr make vector! [integer! 32 [1 2 3]]]
 --rejects-- "A too short vector"             [mp/eval :vexpr make vector! [decimal! 64 [1.0]]]
+
+;; The variables of `variables!` end at byte 48 (a uint64! comes first), so
+;; 5 doubles are not enough although the struct has only 5 double fields.
+--test-- "Compile with a non-double field before the variables" [
+    handle? uexpr: mp/compile variables! "result = x + step"
+]
+--rejects-- "A vector shorter than the last variable's end" [
+    mp/eval :uexpr make vector! [decimal! 64 [0.0 1.0 0.0 2.0 0.0]]
+]
+--test-- "A vector reaching the last variable's end" [
+    uvec: make vector! [decimal! 64 [0.0 1.0 0.0 2.0 0.0 0.0]]
+    all [
+        3.0 == mp/eval :uexpr uvec
+        is? uvec/6 3.0
+    ]
+]
+--test-- "The size counts from the vector's index" [
+    uvec: make vector! [decimal! 64 [9.0 0.0 1.0 0.0 2.0 0.0 0.0]]
+    all [
+        3.0 == mp/eval :uexpr next uvec
+        is? uvec/1 9.0
+    ]
+]
+--rejects-- "A vector too short from its index" [
+    mp/eval :uexpr skip make vector! [decimal! 64 [0.0 1.0 0.0 2.0 0.0 0.0]] 1
+]
 --rejects-- "A struct of another specification" [mp/eval :vexpr outer]
 
 ;;=============================================================================
