@@ -347,8 +347,11 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	mpCtx = (Context*)mpc->context;
 	if (mpCtx == NULL) return RXR_NONE;
 
-	// Strings are always UTF-8 encoded now.
+	// Strings are always UTF-8 encoded byte series, terminated at the tail.
+	// Compile from the string's index, like any other series argument.
 	code = (REBSER*)RXA_SERIES(frm, 2);
+	REBCNT index = RXA_INDEX(frm, 2);
+	const char *body = index < SERIES_TAIL(code) ? (const char*)SERIES_SKIP(code, index) : "";
 
 	// Create a new expression...
 	hob = RL_MAKE_HANDLE_CONTEXT(Handle_MPExpression);
@@ -360,7 +363,7 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	debug_print("New MPExpression: %p for context: %p options: %u\n", (void*)mpExp, (void*)mpCtx, options);
 
 	// And compile it...
-	Error err = mpExp->compile(*mpCtx, SERIES_TEXT(code), options, &outputLog);
+	Error err = mpExp->compile(*mpCtx, body, options, &outputLog);
 	if (err != kErrorOk) {
 		delete mpExp;
 		mpe->expression = NULL;

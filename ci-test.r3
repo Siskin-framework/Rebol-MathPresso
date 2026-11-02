@@ -213,6 +213,12 @@ group "Compile errors"
 --test-- "A failed compilation leaves the context usable" [
     handle? mp/compile :ctx "y = x"
 ]
+;; A string is compiled from its index, so the leading garbage is skipped.
+--test-- "Compiles from the string's index" [
+    vd: make variables! [x: 2.0]
+    is? mp/eval mp/compile variables! skip "@@@y = x * 3" 3 vd 6.0
+]
+--rejects-- "A string at its tail (no expression)" [mp/compile variables! tail "y = x"]
 
 ;;=============================================================================
 group "Compilation flags (compile/with)"
