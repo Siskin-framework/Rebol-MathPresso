@@ -223,9 +223,9 @@ group "Compile errors"
 ;;=============================================================================
 group "Compilation flags (compile/with)"
 
-;; 4096 is kOptionDisableSSE4_1: on x86 the rounding functions are then
-;; compiled without the SSE4.1 round instruction, so the flag really reaches
-;; the code generator - and the results must not change.
+;; With kOptionDisableSSE4_1 the rounding functions are compiled on x86
+;; without the SSE4.1 round instruction, so the flag really reaches the code
+;; generator - and the results must not change.
 round!: make struct! [x [double!] r [double!]]
 round-src: "r = floor(x) * 1000 + ceil(x) * 100 + round_half_away(x) * 10 + trunc(x)"
 round-all: func [expr /local d][
@@ -240,21 +240,29 @@ round-all: func [expr /local d][
     is? round-all mp/compile round! round-src [2332.0 -3232.0 1211.0 -2121.0]
 ]
 --test-- "Same results with flags given to compile/with" [
-    is? round-all mp/compile/with round! round-src 4096 [2332.0 -3232.0 1211.0 -2121.0]
+    is? round-all mp/compile/with round! round-src mp/kOptionDisableSSE4_1 [2332.0 -3232.0 1211.0 -2121.0]
+]
+--test-- "Same results with every CPU feature excluded" [
+    is? round-all mp/compile/with round! round-src
+        mp/kOptionDisableSSE4_1 | mp/kOptionDisableAVX | mp/kOptionDisableAVX512
+        [2332.0 -3232.0 1211.0 -2121.0]
 ]
 --test-- "compile/with 0 overrides flags from set-options" [
-    mp/set-options 4096
+    mp/set-options mp/kOptionDisableSSE4_1
     result: round-all mp/compile/with round! round-src 0
     mp/set-options 0
     is? result [2332.0 -3232.0 1211.0 -2121.0]
 ]
 --rejects-- "Negative flags"   [mp/compile/with round! round-src -1]
 --rejects-- "Too large flags"  [mp/compile/with round! round-src 65536]
+--test-- "CPU option values match MathPresso" [
+    is? reduce [mp/kOptionDisableSSE4_1 mp/kOptionDisableAVX mp/kOptionDisableAVX512] [4096 8192 16384]
+]
 
 ;;=============================================================================
 group "Options (set-options)"
 
---test-- "Valid flags are accepted"       [did mp/set-options 4096]
+--test-- "Valid flags are accepted"       [did mp/set-options mp/kOptionDisableAVX]
 --test-- "none clears the flags"          [did mp/set-options none]
 --test-- "Compiling works after clearing" [
     is? round-all mp/compile round! round-src [2332.0 -3232.0 1211.0 -2121.0]

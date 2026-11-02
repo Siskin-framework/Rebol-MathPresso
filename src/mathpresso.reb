@@ -89,7 +89,7 @@ commands: [
 	]
 	set-options: [
 		"MathPresso options used when expression is being compiled"
-		flags [integer! none!] "Combination of: 1 = Verbose, 2 = DebugAst, 4 = DebugMachineCode, 8 = DebugCompiler; none clears them"
+		flags [integer! none!] "Combination of the kOption* values; none clears them"
 	]
 ]
 
@@ -101,4 +101,9 @@ mezzanine: [
 	kOptionDebugAst:         2 ;; Debug AST (shows initial and final AST).
 	kOptionDebugMachineCode: 4 ;; Debug machine code generated.
 	kOptionDebugCompiler:    8 ;; Debug AsmJit's compiler.
+	;- CPU features which may be excluded from the generated code (X86 only).
+	;- Meant for testing the code generation - the results do not change.
+	kOptionDisableSSE4_1: 4096  ;; Do not use SSE4.1 even if the CPU supports it.
+	kOptionDisableAVX:    8192  ;; Do not use AVX even if the CPU supports it.
+	kOptionDisableAVX512: 16384 ;; Do not use AVX-512 even if the CPU supports it.
 ]
