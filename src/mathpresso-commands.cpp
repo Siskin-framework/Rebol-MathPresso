@@ -199,6 +199,23 @@ static const char* Add_Constants(Context *mpCtx, REBSER *blk, REBCNT index) {
 	return NULL;
 }
 
+// Adds a plain `double!` field as a variable. Returns FALSE with the message
+// in MPError when the name is already taken (e.g. by `v_1` of an array `v`
+// declared before it). MathPresso copies the name, so ours is freed.
+static bool Add_Field(Context *mpCtx, REBSTF *field) {
+	char  *name = (char*)RL_WORD_STRING(field->sym); // allocates a new string!
+	Error  err  = mpCtx->add_variable(name, (int)field->offset);
+
+	if (err != kErrorOk) {
+		if (err == kErrorSymbolAlreadyExists)
+			snprintf(MPError, sizeof(MPError), "Variable `%s` is already defined!", name);
+		else
+			snprintf(MPError, sizeof(MPError), "Variable `%s`: %s", name, Error_Text(err));
+	}
+	free(name);
+	return err == kErrorOk;
+}
+
 // Adds every element of a `double!` array field as a variable named
 // `<field>_<n>` (1-based). Returns FALSE with the message in MPError when a
 // name is already taken (e.g. by a plain field called `v_1`).
@@ -271,8 +288,11 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 				RL_FREE_HANDLE_CONTEXT(hob);
 				RETURN_ERROR(MPError);
 			}
-		} else {
-			mpCtx->add_variable(cs_cast(RL_WORD_STRING(field->sym)), field->offset);
+		} else if (!Add_Field(mpCtx, field)) {
+			delete mpCtx;
+			mpc->context = NULL;
+			RL_FREE_HANDLE_CONTEXT(hob);
+			RETURN_ERROR(MPError);
 		}
 	}
 

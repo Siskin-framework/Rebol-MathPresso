@@ -427,6 +427,15 @@ arr!: make struct! [tag [uint8!] v [double! [3]] s [double!]]
 --rejects-- "An element named like a plain field" [
     mp/context make struct! [v_1 [double!] v [double! [2]]]
 ]
+--rejects-- "A plain field named like an element" [
+    mp/context make struct! [v [double! [2]] v_1 [double!]]
+]
+--rejects-- "A plain field named like a built-in" [
+    mp/context make struct! [sin [double!]]
+]
+--test-- "Plain fields still work after the change" [
+    is? mp/eval mp/compile kv! "y = x * 2" make kv! [x: 1.5] 3.0
+]
 
 print-hline
 ;---------------------------------------------------------------------
