@@ -6,51 +6,207 @@
 
 # Rebol/MathPresso
 
-[Rebol3](https://github.com/Oldes/Rebol3) (3.22.10 and higher) extension for Mathematical Expression Parser And JIT Compiler.
-Using Petr Kobalicek's [MathPresso code](https://github.com/kobalicek/mathpresso).
+[Rebol3](https://github.com/Oldes/Rebol3) (3.22.10 and higher) extension for fast evaluation of
+mathematical expressions. It uses Petr Kobalicek's [MathPresso](https://github.com/kobalicek/mathpresso),
+which parses an expression and compiles it **directly to machine code** (x86, x64 and arm64).
 
-## Usage
+Write the math once as a string, compile it, and then run it as often as you need - typically
+thousands or millions of times, at the speed of native code. The expression reads and writes
+`double!` fields of a Rebol `struct!`, so there is no conversion of values between Rebol and C.
 
-This is an example of the initial syntax.
+## Quick start
 
 ```rebol
 mp: import 'mathpresso
 
-;; Initialize a Mathpresso context using a struct containing some double values.
-variables!: make struct! [
-    unused    [uint64!] ;; this value is ignored by mathpresso expression
-    x         [double!]
-    y         [double!]
-    step      [double!]
-    amplitude [double!]
-    result    [double!]
-]
-ctx: mp/context :variables!
-
-;; Compile an expression using the context (or directly the struct)
-expr: mp/compile :ctx "y=sin(x); x=x+step; result=round(y*amplitude*100)/100"
-
-;; To evaluate the expression, provide a struct of the same type used during compilation.
-data: make variables! [
-    unused:    1234     ;; this value should not be affected by the evaluation
-    step:      pi / 30  ;; initialize the step onput value using Rebol only 
-    amplitude: 100      ;; maximum value of the result
+;; 1. Describe the variables as a struct. Every double! field is a variable.
+point!: make struct! [
+    x [double!]
+    y [double!]
+    distance [double!]
 ]
 
-;; Evaluate expression (preferably multiple times)
-loop 31 [ probe mp/eval :expr :data ]
+;; 2. Compile an expression which uses them.
+expr: mp/compile point! "distance = sqrt(x * x + y * y)"
 
-;; Values in the data struct were updated...
-probe data
-
-;; one context may be shared with multiple expressions
-expr2: mp/compile :ctx {
-    y=sin(x)+cos(x/2);
-    x=x+step;
-    result=round(y*amplitude*100)/100
-}
-loop 31 [ probe mp/eval :expr2 :data ]
+;; 3. Evaluate it with some data - as often as you need.
+p: make point! [x: 3.0 y: 4.0]
+mp/eval :expr p    ;== 5.0  (the value of the last statement)
+p/distance         ;== 5.0  (the struct was updated)
 ```
+
+## How it works
+
+There are three steps, and the first two are done just once:
+
+1. **Context** - `mp/context spec` tells MathPresso which variables exist. Each `double!` field
+   of the `spec` struct becomes a variable of the same name, placed at the field's position in
+   the struct's memory. Fields of other types are not visible to expressions (they keep their
+   place in memory, so their values are left untouched).
+2. **Compile** - `mp/compile context "..."` turns an expression into machine code. One context may
+   be used for any number of expressions. If you pass the struct instead of a context, a context
+   is made for you.
+3. **Evaluate** - `mp/eval expression data` runs the compiled code on `data`, which must be a struct
+   of the same specification as the one used for the context (or a vector of doubles, see below).
+   Variables assigned in the expression are written back into `data`.
+
+```rebol
+ctx: mp/context point!                       ;; once
+len: mp/compile :ctx "sqrt(x * x + y * y)"   ;; once
+dbl: mp/compile :ctx "x = x * 2; y = y * 2"  ;; another expression, same context
+
+p: make point! [x: 3.0 y: 4.0]
+mp/eval :len p    ;== 5.0
+mp/eval :dbl p    ;; p/x is now 6.0, p/y is 8.0
+mp/eval :len p    ;== 10.0
+```
+
+## The expression language
+
+An expression is a sequence of statements separated by `;`. The value of the whole expression
+is the value of its last statement.
+
+```c
+var r = sqrt(x * x + y * y);   // `var` declares a local variable (not stored in the struct)
+angle = atan2(y, x);           // assignment to a struct field
+r * 2                          // the result
+```
+
+* **Numbers** are always doubles. Use `//` for comments to the end of a line.
+* **Operators:** `+ - * / %` (modulo), `==  !=  <  <=  >  >=`, `!` (not) and parentheses.
+  There is no `^` - use `pow(x, y)`.
+* **Comparisons give `1` or `0`.** There is no `if`; instead, multiply by a comparison:
+  `y = (x > 0) * x` keeps only positive values, and
+  `v = v + (age >= life) * (start - v)` sets `v` to `start` only when `age >= life`.
+* **Names are case-sensitive:** `Gain` and `gain` are two different names.
+* A `var` which is never assigned is `NaN`. An expression with no result gives `NaN` too.
+
+### Built-in constants and functions
+
+| | |
+|---|---|
+| Constants | `PI`, `E` |
+| Rounding | `floor` `ceil` `trunc` `round_even` `round_half_away` `round_half_up` `frac` |
+| Basic | `abs` `sqrt` `recip` (1/x) `min` `max` `avg` `copy_sign` `sign_bit` |
+| Powers and logs | `pow` `exp` `log` `log2` `log10` |
+| Trigonometry | `sin` `cos` `tan` `asin` `acos` `atan` `atan2` `hypot` `sinh` `cosh` `tanh` |
+| Checks (give 1 or 0) | `is_nan` `is_inf` `is_finite` |
+
+This extension adds:
+
+| Function | Result |
+|---|---|
+| `cbrt(x)` `exp2(x)` `expm1(x)` `log1p(x)` | cube root, 2^x, e^x - 1, ln(1 + x) |
+| `erf(x)` `erfc(x)` `tgamma(x)` `lgamma(x)` | error function and its complement, gamma, ln of gamma |
+| `fmod(x, y)` | remainder of x / y (with the sign of x) |
+| `sign(x)` | -1, 0 or 1 |
+| `clamp(x, lo, hi)` | x limited to the range lo..hi |
+| `mix(a, b, t)` | linear interpolation from a (t = 0) to b (t = 1) |
+| `step(edge, x)` | 0 when x < edge, otherwise 1 |
+| `smoothstep(e0, e1, x)` | smooth transition from 0 to 1 while x goes from e0 to e1 |
+| `hash(x)` | pseudo random number in [0, 1), always the same for the same x |
+
+A struct field or a constant with the same name as one of these functions hides it.
+
+> Note: `round` does not exist - use `round_half_away` for the usual rounding.
+
+## Variables in detail
+
+### Array fields
+
+MathPresso has no indexing, so each element of a `double!` array field becomes its own variable,
+named with an underscore and the (1-based) index:
+
+```rebol
+tri!: make struct! [v [double! [3]] sum [double!]]
+t: make tri! []
+t/v: [1.0 2.0 3.0]
+mp/eval mp/compile tri! "sum = v_1 + v_2 + v_3" t   ;== 6.0
+```
+
+### Constants
+
+Values which do not change between evaluations are better passed as constants than as struct
+fields: they need no place in the struct, and MathPresso computes with them already when the
+expression is compiled.
+
+```rebol
+world: mp/context/with particle! [
+    gravity 9.81
+    dt      0.016
+]
+step: mp/compile :world "vy = vy - gravity * dt; y = y + vy * dt"
+```
+
+Values must be numbers, so use `compose` or `reduce` for computed ones:
+`mp/context/with particle! compose [width (size/x)]`.
+
+A constant's name is a Rebol word, and Rebol words are not case-sensitive - a word may come out
+in a different case (whichever spelling of it Rebol met first). For a name which must keep its
+exact case, use a ref! instead: `[@Gain 2.5]`.
+
+### Read-only fields
+
+Fields which an expression must not change can be made read-only. Assigning to them is then
+reported as an error when the expression is compiled:
+
+```rebol
+ctx: mp/context/read-only point! [x y]
+mp/compile :ctx "distance = sqrt(x * x + y * y)"   ;; fine
+mp/compile :ctx "x = 0"     ;** Can't assign to a read-only variable 'x'. (at 1:3)
+```
+
+For an array field, its name makes all its elements read-only. When *every* field is read-only,
+the expression can never write into the data, so `eval` then accepts also structs which may not
+be written directly (for example a struct which holds Rebol values in `rebval!` fields).
+
+## Evaluating many values at once
+
+### A vector of structs
+
+`eval/each` evaluates an expression for every struct of a vector of structs, in one call. Use it
+when you have many items with their own state - particles, sprites, rows of data - and the
+expression updates them:
+
+```rebol
+particle!: make struct! [x [double!] y [double!] vx [double!] vy [double!]]
+particles: make vector! [:particle! 10000]
+move: mp/compile particle! "vy = vy - 9.81 * 0.016; x = x + vx * 0.016; y = y + vy * 0.016"
+
+;; every frame:
+mp/eval/each :move particles    ;; all 10000 particles move in one call
+```
+
+It starts at the vector's current position, `/part` limits the number of elements, and it returns
+the result of the last evaluation (or `none` when there was nothing to evaluate).
+See [examples/particles.r3](examples/particles.r3) for a complete simulation.
+
+### A vector of doubles
+
+Instead of a struct, `eval` also accepts a vector of 64-bit decimals, in which the values are in
+the same order (and at the same byte positions) as the double fields of the struct:
+
+```rebol
+v: make vector! [decimal! 64 [3.0 4.0 0.0]]   ;; x, y, distance
+mp/eval mp/compile point! "distance = sqrt(x * x + y * y)" v   ;== 5.0
+```
+
+## When something goes wrong
+
+* An invalid expression is reported as an error with its position (line:column):
+  `mp/compile point! "distance = round(x)"` gives `Unresolved symbol round. (at 1:12)`.
+* `eval` refuses data of another struct specification, a vector which is too short, and a struct
+  which may not be written directly (unless all fields are read-only, see above).
+* To see what MathPresso does, use `mp/set-options` with the `kOption*` values below - for example
+  `mp/set-options mp/kOptionDebugAst | mp/kOptionDebugMachineCode` prints the parsed expression and
+  the generated machine code. `mp/set-options none` turns it off again. `compile/with` uses its own
+  flags instead, for just one expression.
+
+## Examples
+
+* [examples/graph2d.reb](examples/graph2d.reb) - draws a 2D function into an image.
+* [examples/particles.r3](examples/particles.r3) - three particle fountains, with the whole
+  simulation in one expression, saved as frames for a video.
 
 Feel free to [let me know](https://gitter.im/rebol3/community) if something could be improved.
 
