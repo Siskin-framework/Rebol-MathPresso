@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cmath>
 #include "mathpresso.h"
 extern "C" {
 	#include "gen-mathpresso.h"
@@ -200,6 +201,67 @@ static const char* Add_Constants(Context *mpCtx, REBSER *blk, REBCNT index) {
 	return NULL;
 }
 
+//== extra functions ==========================================================
+
+// Functions MathPresso does not have built in. They are plain C functions
+// called from the compiled code; all are pure, so a call with constant
+// arguments is evaluated already when the expression is compiled.
+//
+// The wrappers are needed because the <cmath> functions are overloaded, so
+// their address is ambiguous.
+
+static double F_cbrt(double x)   { return std::cbrt(x); }
+static double F_exp2(double x)   { return std::exp2(x); }
+static double F_expm1(double x)  { return std::expm1(x); }
+static double F_log1p(double x)  { return std::log1p(x); }
+static double F_erf(double x)    { return std::erf(x); }
+static double F_erfc(double x)   { return std::erfc(x); }
+static double F_tgamma(double x) { return std::tgamma(x); }
+static double F_lgamma(double x) { return std::lgamma(x); }
+static double F_sign(double x)   { return (double)((x > 0) - (x < 0)); }
+// A pseudo random value in [0, 1) - the same for the same input.
+static double F_hash(double x)   { double v = std::sin(x * 12.9898) * 43758.5453; return v - std::floor(v); }
+static double F_fmod(double x, double y)    { return std::fmod(x, y); }
+static double F_step(double edge, double x) { return x < edge ? 0.0 : 1.0; }
+static double F_clamp(double x, double lo, double hi) { return x < lo ? lo : (x > hi ? hi : x); }
+static double F_mix(double a, double b, double t)     { return a + (b - a) * t; }
+static double F_smoothstep(double e0, double e1, double x) {
+	double t = (x - e0) / (e1 - e0);
+	t = t < 0 ? 0 : (t > 1 ? 1 : t);
+	return t * t * (3 - 2 * t);
+}
+
+static const struct {
+	const char  *name;
+	void        *func;
+	unsigned int args;
+} MPFunctions[] = {
+	{"cbrt",       (void*)F_cbrt,       kFunctionArg1},
+	{"exp2",       (void*)F_exp2,       kFunctionArg1},
+	{"expm1",      (void*)F_expm1,      kFunctionArg1},
+	{"log1p",      (void*)F_log1p,      kFunctionArg1},
+	{"erf",        (void*)F_erf,        kFunctionArg1},
+	{"erfc",       (void*)F_erfc,       kFunctionArg1},
+	{"tgamma",     (void*)F_tgamma,     kFunctionArg1},
+	{"lgamma",     (void*)F_lgamma,     kFunctionArg1},
+	{"sign",       (void*)F_sign,       kFunctionArg1},
+	{"hash",       (void*)F_hash,       kFunctionArg1},
+	{"fmod",       (void*)F_fmod,       kFunctionArg2},
+	{"step",       (void*)F_step,       kFunctionArg2},
+	{"clamp",      (void*)F_clamp,      kFunctionArg3},
+	{"mix",        (void*)F_mix,        kFunctionArg3},
+	{"smoothstep", (void*)F_smoothstep, kFunctionArg3},
+};
+
+// A name already used by a variable or a constant is skipped, not an error:
+// those come from the user and win over the extra functions.
+static void Add_Functions(Context *mpCtx) {
+	for (size_t i = 0; i < sizeof(MPFunctions) / sizeof(MPFunctions[0]); i++) {
+		mpCtx->add_function(MPFunctions[i].name, MPFunctions[i].func,
+			MPFunctions[i].args | kFunctionNoSideEffects);
+	}
+}
+
 // Adds a plain `double!` field as a variable. Returns FALSE with the message
 // in MPError when the name is already taken (e.g. by `v_1` of an array `v`
 // declared before it). MathPresso copies the name, so ours is freed.
@@ -307,6 +369,11 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 			RETURN_ERROR(msg);
 		}
 	}
+
+	// Last, so that a struct field or a constant of the same name wins over
+	// an extra function (e.g. a field called `step`).
+	Add_Functions(mpCtx);
+
 	RETURN_HANDLE(hob);
 }
 

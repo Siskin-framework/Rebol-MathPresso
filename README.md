@@ -64,7 +64,7 @@ Initialize MPContext handle with given variable names
 * `constants` `[block!]` Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case
 
 #### `compile` `:context` `:expression`
-Compile math expression using the given context
+Compile math expression using the given context. Besides MathPresso's built-ins, these functions are available: cbrt exp2 expm1 log1p erf erfc tgamma lgamma sign hash (1 argument), fmod step (2), clamp mix smoothstep (3). A struct field or constant of the same name hides the function.
 * `context` `[struct! handle!]` Struct with double fields used by expression as variables or existing MPContext handle
 * `expression` `[string!]` Math expression
 * `/with`

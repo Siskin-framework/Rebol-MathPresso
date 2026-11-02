@@ -493,6 +493,51 @@ arr!: make struct! [tag [uint8!] v [double! [3]] s [double!]]
     is? mp/eval mp/compile kv! "y = x * 2" make kv! [x: 1.5] 3.0
 ]
 
+;;=============================================================================
+group "Extra functions"
+
+fx!: make struct! [x [double!] r [double!]]
+;; Compiles `r = <src>` and evaluates it for the given x.
+fx: func [src [string!] x [decimal!] /local d][
+    d: make fx! compose [x: (x)]
+    mp/eval mp/compile fx! join "r = " src d
+]
+;; libm results need not be exact - cbrt(27) is 3.0000000000000004
+near?: func [value expected][
+    any [(abs (value - expected)) < 1e-9  ajoin ["got " mold value]]
+]
+
+--test-- "cbrt"        [near? fx "cbrt(x)" 27.0 3.0]
+--test-- "exp2"        [is? fx "exp2(x)" 10.0 1024.0]
+--test-- "expm1 log1p" [is? fx "expm1(x) + log1p(x)" 0.0 0.0]
+--test-- "erf erfc"    [is? fx "erf(x) + erfc(x)" 0.0 1.0]
+--test-- "tgamma"      [near? fx "tgamma(x)" 5.0 24.0]
+--test-- "lgamma"      [near? fx "lgamma(x)" 1.0 0.0]
+--test-- "sign"        [is? reduce [fx "sign(x)" -3.0  fx "sign(x)" 0.0  fx "sign(x)" 0.5] [-1.0 0.0 1.0]]
+--test-- "fmod"        [is? fx "fmod(x, 2)" 7.5 1.5]
+--test-- "step"        [is? reduce [fx "step(0.5, x)" 0.3  fx "step(0.5, x)" 0.7] [0.0 1.0]]
+--test-- "clamp"       [is? reduce [fx "clamp(x, 0, 1)" 5.0  fx "clamp(x, 0, 1)" -2.0  fx "clamp(x, 0, 1)" 0.25] [1.0 0.0 0.25]]
+--test-- "mix"         [is? fx "mix(2, 4, x)" 0.25 2.5]
+--test-- "smoothstep"  [
+    is? reduce [fx "smoothstep(0, 1, x)" -1.0  fx "smoothstep(0, 1, x)" 0.5  fx "smoothstep(0, 1, x)" 2.0] [0.0 0.5 1.0]
+]
+--test-- "hash is the same for the same input" [is? fx "hash(x)" 1.0 fx "hash(x)" 1.0]
+--test-- "hash is in [0, 1)" [
+    all [h: fx "hash(x)" 1.0  h >= 0.0  h < 1.0]
+]
+--test-- "hash differs for different inputs" [not equal? fx "hash(x)" 1.0 fx "hash(x)" 2.0]
+--test-- "Functions can be nested" [is? fx "clamp(sign(x) * 3, mix(0, 2, 0.5), 2.5)" 1.0 2.5]
+;; `variables!` has a field called `step` - it hides the function.
+--test-- "A struct field hides a function of the same name" [
+    vd: make variables! [step: 2.0]
+    is? mp/eval mp/compile variables! "result = step + 1" vd 3.0
+]
+--test-- "A constant hides a function of the same name" [
+    is? mp/eval mp/compile mp/context/with kv! [mix 7] "y = mix" make kv! [] 7.0
+]
+--rejects-- "A function called with too few arguments"  [mp/compile fx! "r = clamp(x, 1)"]
+--rejects-- "A function called with too many arguments" [mp/compile fx! "r = sign(x, 1)"]
+
 print-hline
 ;---------------------------------------------------------------------
 print as-yellow "=== Graph2D example ================================"
