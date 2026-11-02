@@ -215,6 +215,37 @@ group "Compile errors"
 ]
 
 ;;=============================================================================
+group "Compilation flags (compile/with)"
+
+;; 4096 is kOptionDisableSSE4_1: on x86 the rounding functions are then
+;; compiled without the SSE4.1 round instruction, so the flag really reaches
+;; the code generator - and the results must not change.
+round!: make struct! [x [double!] r [double!]]
+round-src: "r = floor(x) * 1000 + ceil(x) * 100 + round_half_away(x) * 10 + trunc(x)"
+round-all: func [expr /local d][
+    collect [
+        foreach x [2.5 -2.5 1.3 -1.7] [
+            d: make round! compose [x: (x)]
+            keep mp/eval :expr d
+        ]
+    ]
+]
+--test-- "Results without flags" [
+    is? round-all mp/compile round! round-src [2332.0 -3232.0 1211.0 -2121.0]
+]
+--test-- "Same results with flags given to compile/with" [
+    is? round-all mp/compile/with round! round-src 4096 [2332.0 -3232.0 1211.0 -2121.0]
+]
+--test-- "compile/with 0 overrides flags from set-options" [
+    mp/set-options 4096
+    result: round-all mp/compile/with round! round-src 0
+    mp/set-options 0
+    is? result [2332.0 -3232.0 1211.0 -2121.0]
+]
+--rejects-- "Negative flags"   [mp/compile/with round! round-src -1]
+--rejects-- "Too large flags"  [mp/compile/with round! round-src 65536]
+
+;;=============================================================================
 group "Struct and vector arguments (ABI 1)"
 
 ;; A nested struct is a VIEW into its parent's data at a non-zero offset,

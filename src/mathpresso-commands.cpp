@@ -48,6 +48,7 @@ static const char* ERR_NO_EXPRESSION = "Command needs a valid MPExpression handl
 static const char* ERR_NOT_DOUBLES   = "Command needs a vector with double values!";
 static const char* ERR_SHORT_DATA    = "Insufficient size of input data!";
 static const char* ERR_NOT_STRUCTS   = "/each needs a vector of structs!";
+static const char* ERR_BAD_OPTIONS   = "Compilation flags must be in range 0 - 65535!";
 
 // Receives messages from MathPresso's parser, optimizer and compiler.
 //
@@ -324,6 +325,15 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	Context      *mpCtx;
 	Expression   *mpExp;
 	MyOutputLog   outputLog;
+	REBCNT        options = MPOptions;
+
+	// Arguments: 1 = context, 2 = expression, 3 = /with, 4 = flags.
+	// Flags given here replace those from `set-options` for this compilation.
+	if (RXA_REF(frm, 3)) {
+		i64 flags = RXA_INT64(frm, 4);
+		if (flags < 0 || flags > 0xFFFF) RETURN_ERROR(ERR_BAD_OPTIONS);
+		options = (REBCNT)flags;
+	}
 
 	if (RXA_TYPE(frm, 1) == RXT_STRUCT) {
 		// Replaces the struct in arg 1 with a temporary MPContext handle.
@@ -347,10 +357,10 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	mpe->expression = mpExp = new Expression();
 	mpe->struct_id = mpc->struct_id;
 	mpe->bytes_needed = mpc->bytes_needed;
-	debug_print("New MPExpression: %p for context: %p options: %u\n", (void*)mpExp, (void*)mpCtx, MPOptions);
+	debug_print("New MPExpression: %p for context: %p options: %u\n", (void*)mpExp, (void*)mpCtx, options);
 
 	// And compile it...
-	Error err = mpExp->compile(*mpCtx, SERIES_TEXT(code), MPOptions, &outputLog);
+	Error err = mpExp->compile(*mpCtx, SERIES_TEXT(code), options, &outputLog);
 	if (err != kErrorOk) {
 		delete mpExp;
 		mpe->expression = NULL;
