@@ -411,7 +411,9 @@ COMMAND cmd_mathpresso_eval(RXIFRM *frm, void *ctx) {
 		REBSER *ser   = RXA_VECTOR_SERIES(frm, 2);
 		REBCNT  index = RXA_VECTOR_INDEX(frm, 2);
 		if (RXI_VECTOR_TYPE(RXA_VECTOR_INFO(frm, 2)) != VTSF64) RETURN_ERROR(ERR_NOT_DOUBLES);
-		len = (REBU64)(SERIES_TAIL(ser) - index) * sizeof(REBDEC);
+		// The index may be past the tail (the series was shortened after the
+		// value was taken), and the unsigned difference would wrap around.
+		len = index < SERIES_TAIL(ser) ? (REBU64)(SERIES_TAIL(ser) - index) * sizeof(REBDEC) : 0;
 		bin = SERIES_SKIP(ser, index);
 	}
 	if (len < mpe->bytes_needed) {

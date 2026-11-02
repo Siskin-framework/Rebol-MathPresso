@@ -274,6 +274,17 @@ vec: make vector! [decimal! 64 [3.0 4.0 0.0]]
         is? uvec/1 9.0
     ]
 ]
+;; A vector value whose index is past its tail - the series was shortened
+;; after the value was taken.
+--test-- "A vector with its index past the tail is refused" [
+    uvec: make vector! [decimal! 64 [0.0 1.0 0.0 2.0 0.0 0.0 0.0 0.0]]
+    past: skip uvec 7
+    clear uvec
+    all [
+        empty? head past
+        error? try [mp/eval :uexpr past]
+    ]
+]
 --rejects-- "A vector too short from its index" [
     mp/eval :uexpr skip make vector! [decimal! 64 [0.0 1.0 0.0 2.0 0.0 0.0]] 1
 ]
