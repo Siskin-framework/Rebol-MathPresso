@@ -457,8 +457,16 @@ COMMAND cmd_mathpresso_eval(RXIFRM *frm, void *ctx) {
 	RETURN_DOUBLE(((Expression*)mpe->expression)->evaluate(bin));
 }
 
+// none clears the options. Returns false (and keeps the current options)
+// for flags out of range.
 COMMAND cmd_mathpresso_set_options(RXIFRM *frm, void *ctx) {
-	REBU64 num = RXA_UINT64(frm, 1);
+	REBU64 num;
+	// The argument slot of none holds no number - it must not be read as one.
+	if (RXA_TYPE(frm, 1) == RXT_NONE) {
+		MPOptions = 0;
+		return RXR_TRUE;
+	}
+	num = RXA_UINT64(frm, 1);
 	if (num > 0xFFFFu) return RXR_FALSE;
 	MPOptions = (REBCNT)num;
 	return RXR_TRUE;

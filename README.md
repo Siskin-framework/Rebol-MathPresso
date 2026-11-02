@@ -80,7 +80,7 @@ Evaluate precompiled math expressions using given variables
 
 #### `set-options` `:flags`
 MathPresso options used when expression is being compiled
-* `flags` `[integer! none!]` Combination of: 1 = Verbose, 2 = DebugAst, 4 = DebugMachineCode, 8 = DebugCompiler
+* `flags` `[integer! none!]` Combination of: 1 = Verbose, 2 = DebugAst, 4 = DebugMachineCode, 8 = DebugCompiler; none clears them
 
 
 ## Other extension values:

@@ -252,6 +252,17 @@ round-all: func [expr /local d][
 --rejects-- "Too large flags"  [mp/compile/with round! round-src 65536]
 
 ;;=============================================================================
+group "Options (set-options)"
+
+--test-- "Valid flags are accepted"       [did mp/set-options 4096]
+--test-- "none clears the flags"          [did mp/set-options none]
+--test-- "Compiling works after clearing" [
+    is? round-all mp/compile round! round-src [2332.0 -3232.0 1211.0 -2121.0]
+]
+--test-- "Negative flags are refused"     [not mp/set-options -1]
+--test-- "Too large flags are refused"    [not mp/set-options 65536]
+
+;;=============================================================================
 group "Struct and vector arguments (ABI 1)"
 
 ;; A nested struct is a VIEW into its parent's data at a non-zero offset,
