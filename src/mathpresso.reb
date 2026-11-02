@@ -69,7 +69,7 @@ int MPContext_free(void *hndl);
 commands: [
 	context: [
 		"Initialize MPContext handle with given variable names"
-		spec [struct!] "Struct with double fields used as expression variables"
+		spec [struct!] "Struct with double fields used as expression variables (array field `v [double! [3]]` gives `v_1 v_2 v_3`)"
 		/with "Add named constants (folded when an expression is compiled)"
 		 constants [block!] "Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case"
 	]

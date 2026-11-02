@@ -199,6 +199,30 @@ static const char* Add_Constants(Context *mpCtx, REBSER *blk, REBCNT index) {
 	return NULL;
 }
 
+// Adds every element of a `double!` array field as a variable named
+// `<field>_<n>` (1-based). Returns FALSE with the message in MPError when a
+// name is already taken (e.g. by a plain field called `v_1`).
+static bool Add_Array_Field(Context *mpCtx, REBSTF *field) {
+	char  *base = (char*)RL_WORD_STRING(field->sym); // allocates a new string!
+	char   name[256];
+	Error  err;
+
+	for (REBCNT n = 0; n < field->dimension; n++) {
+		snprintf(name, sizeof(name), "%s_%u", base, n + 1);
+		err = mpCtx->add_variable(name, (int)(field->offset + n * field->size));
+		if (err != kErrorOk) {
+			if (err == kErrorSymbolAlreadyExists)
+				snprintf(MPError, sizeof(MPError), "Variable `%s` of array field `%s` is already defined!", name, base);
+			else
+				snprintf(MPError, sizeof(MPError), "Variable `%s`: %s", name, Error_Text(err));
+			free(base);
+			return false;
+		}
+	}
+	free(base);
+	return true;
+}
+
 // Creates a MPContext handle for the struct in argument 1 and returns it
 // in argument 1. Constants are added when `consts` is not NULL.
 //
@@ -231,7 +255,19 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index) {
 
 	field = RXI_STRUCT_FIELDS(&stru);
 	for (i = 0; i < stru.count; ++i, ++field) {
-		if (field->type == STRUCT_TYPE_DOUBLE) {
+		if (field->type != STRUCT_TYPE_DOUBLE) continue;
+		if (field->array) {
+			// MathPresso has no indexing, so every element of an array field
+			// becomes its own variable: `v [double! [3]]` is `v_1 v_2 v_3`
+			// (1-based, like Rebol's `v/1`).
+			if (!Add_Array_Field(mpCtx, field)) {
+				delete mpCtx;
+				mpc->context = NULL;
+				RL_FREE_HANDLE_CONTEXT(hob);
+				RETURN_ERROR(MPError);
+			}
+			mpc->bytes_needed += field->dimension * sizeof(REBDEC);
+		} else {
 			mpCtx->add_variable(cs_cast(RL_WORD_STRING(field->sym)), field->offset);
 			mpc->bytes_needed += sizeof(REBDEC);
 		}

@@ -346,6 +346,51 @@ scale: none
 --rejects-- "A constant named like a built-in" [mp/context/with kv! [@PI 3]]  ;; a word would become `pi`
 --rejects-- "Assigning to a constant"          [mp/compile :cctx "gain = 1"]
 
+;;=============================================================================
+group "Array fields"
+
+;; `v [double! [3]]` becomes the variables `v_1`, `v_2` and `v_3`.
+arr!: make struct! [tag [uint8!] v [double! [3]] s [double!]]
+--test-- "Array elements are usable as variables" [
+    all [
+        handle? aexpr: mp/compile arr! "s = v_1 + v_2 * v_3"
+        ad: make arr! [tag: 7]
+        ad/v: [1.0 2.0 3.0]
+        7.0 == mp/eval :aexpr ad
+        is? ad/s 7.0
+    ]
+]
+--test-- "Array elements can be written" [
+    all [
+        mp/eval mp/compile arr! "v_3 = v_1 + v_2" ad
+        is? pick ad/v 3 3.0
+    ]
+]
+--test-- "Writing the last element leaves the next field alone" [
+    ad/s: 42.0
+    mp/eval mp/compile arr! "v_3 = 100" ad
+    all [is? ad/s 42.0  is? ad/tag 7]
+]
+--test-- "Elements are counted from 1" [
+    error? try [mp/compile arr! "s = v_0"]
+]
+--test-- "There is no element past the array" [
+    error? try [mp/compile arr! "s = v_4"]
+]
+--test-- "The array itself is not a variable" [
+    error? try [mp/compile arr! "s = v"]
+]
+--test-- "Arrays of other types are ignored" [
+    handle? mp/compile make struct! [i [int32! [2]] s [double!]] "s = 1"
+]
+--test-- "A vector of doubles covers the array too" [
+    vd: make vector! [decimal! 64 [1.0 2.0 3.0 0.0]]
+    is? mp/eval mp/compile make struct! [v [double! [3]] s [double!]] "s = v_1 + v_2 + v_3" vd 6.0
+]
+--rejects-- "An element named like a plain field" [
+    mp/context make struct! [v_1 [double!] v [double! [2]]]
+]
+
 print-hline
 ;---------------------------------------------------------------------
 print as-yellow "=== Graph2D example ================================"
