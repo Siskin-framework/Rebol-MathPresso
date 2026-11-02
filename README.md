@@ -207,6 +207,7 @@ mp/eval mp/compile point! "distance = sqrt(x * x + y * y)" v   ;== 5.0
 * [examples/graph2d.reb](examples/graph2d.reb) - draws a 2D function into an image.
 * [examples/particles.r3](examples/particles.r3) - three particle fountains, with the whole
   simulation in one expression, saved as frames for a video.
+* [examples/mandelbrot.reb](examples/mandelbrot.reb) - draws a Mandelgrot fractal.
 
 Feel free to [let me know](https://gitter.im/rebol3/community) if something could be improved.
 
