@@ -50,6 +50,7 @@ static const char* ERR_NOT_DOUBLES   = "Command needs a vector with double value
 static const char* ERR_SHORT_DATA    = "Insufficient size of input data!";
 static const char* ERR_NOT_STRUCTS   = "/each needs a vector of structs!";
 static const char* ERR_BAD_OPTIONS   = "Compilation flags must be in range 0 - 65535!";
+static const char* ERR_NO_PIXELS     = "render needs an expression compiled with a context made with /pixels!";
 
 // Receives messages from MathPresso's parser, optimizer and compiler.
 //
@@ -350,14 +351,38 @@ static const char* Check_Read_Only(const ReadOnlyList *ro, RXISTRU *stru) {
 	return NULL;
 }
 
+// The pixel variables of a context made with /pixels, in this order, after
+// the struct's own bytes: the pixel's column and row (read-only), then its
+// colour.
+static const char* const PixelVars[] = {"x", "y", "r", "g", "b", "a"};
+#define PIXEL_VARS 6
+
+// Adds the pixel variables at `offset`. Returns FALSE with the message in
+// MPError when a name is already taken by a field of the struct.
+static bool Add_Pixel_Vars(Context *mpCtx, REBCNT offset) {
+	for (int i = 0; i < PIXEL_VARS; i++) {
+		Error err = mpCtx->add_variable(PixelVars[i], (int)(offset + i * sizeof(REBDEC)),
+			i < 2 ? kVariableRO : kVariableRW);
+		if (err != kErrorOk) {
+			if (err == kErrorSymbolAlreadyExists)
+				snprintf(MPError, sizeof(MPError), "Field `%s` clashes with a pixel variable of /pixels!", PixelVars[i]);
+			else
+				snprintf(MPError, sizeof(MPError), "Variable `%s`: %s", PixelVars[i], Error_Text(err));
+			return false;
+		}
+	}
+	return true;
+}
+
 // Creates a MPContext handle for the struct in argument 1 and returns it
 // in argument 1. Constants are added when `consts` is not NULL, and the
-// fields named in `ro` become read-only.
+// fields named in `ro` become read-only. With `pixels`, the variables of
+// `render` are added after the struct's own bytes.
 //
 // Shared by `context` and by `compile` given a struct, which is why the
 // blocks are passed in rather than read from the frame: the two commands
 // have different arguments after the first one.
-static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index, const ReadOnlyList *ro) {
+static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index, const ReadOnlyList *ro, bool pixels) {
 	RXISTRU    stru;
 	REBSTF    *field;
 	REBHOB    *hob;
@@ -382,6 +407,7 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index, const ReadO
 	// Cleared by the first writable variable. With none, no expression of
 	// this context can write into the data.
 	mpc->read_only = 1;
+	mpc->pixels = NO_PIXELS;
 
 	debug_print("New MPContext: %p\n", (void*)mpCtx);
 
@@ -408,6 +434,18 @@ static int Make_MPContext(RXIFRM *frm, REBSER *consts, REBCNT index, const ReadO
 		}
 	}
 
+	// The pixel variables go after the whole struct (aligned for doubles),
+	// so `render` can copy the struct's bytes in front of them as they are.
+	if (pixels) {
+		mpc->pixels = (REBCNT)((stru.size + 7) & ~(REBCNT)7);
+		if (!Add_Pixel_Vars(mpCtx, mpc->pixels)) {
+			msg = MPError;
+			goto fail;
+		}
+		mpc->bytes_needed = mpc->pixels + PIXEL_VARS * sizeof(REBDEC);
+		mpc->read_only = 0;   // r g b a are written
+	}
+
 	// After the variables, so a constant cannot shadow a struct field.
 	if (consts && (msg = Add_Constants(mpCtx, consts, index))) goto fail;
 
@@ -424,16 +462,18 @@ fail:
 	RETURN_ERROR(msg);
 }
 
-// Arguments: 1 = spec, 2 = /with, 3 = constants, 4 = /read-only, 5 = fields.
+// Arguments: 1 = spec, 2 = /with, 3 = constants, 4 = /read-only, 5 = fields,
+// 6 = /pixels.
 COMMAND cmd_mathpresso_context(RXIFRM *frm, void *ctx) {
+	bool pixels = RXA_REF(frm, 6) != 0;
 	ReadOnlyList ro = { NULL, 0 };
 	if (RXA_REF(frm, 4)) {
 		ro.block = (REBSER*)RXA_SERIES(frm, 5);
 		ro.index = RXA_INDEX(frm, 5);
 	}
 	if (RXA_REF(frm, 2))
-		return Make_MPContext(frm, (REBSER*)RXA_SERIES(frm, 3), RXA_INDEX(frm, 3), &ro);
-	return Make_MPContext(frm, NULL, 0, &ro);
+		return Make_MPContext(frm, (REBSER*)RXA_SERIES(frm, 3), RXA_INDEX(frm, 3), &ro, pixels);
+	return Make_MPContext(frm, NULL, 0, &ro, pixels);
 }
 
 COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
@@ -457,7 +497,7 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	if (RXA_TYPE(frm, 1) == RXT_STRUCT) {
 		// Replaces the struct in arg 1 with a temporary MPContext handle.
 		ReadOnlyList ro = { NULL, 0 };
-		int result = Make_MPContext(frm, NULL, 0, &ro);
+		int result = Make_MPContext(frm, NULL, 0, &ro, false);
 		if (result != RXR_VALUE) return result;
 	}
 
@@ -481,6 +521,7 @@ COMMAND cmd_mathpresso_compile(RXIFRM *frm, void *ctx) {
 	mpe->struct_id = mpc->struct_id;
 	mpe->bytes_needed = mpc->bytes_needed;
 	mpe->read_only = mpc->read_only;
+	mpe->pixels = mpc->pixels;
 	debug_print("New MPExpression: %p for context: %p options: %u\n", (void*)mpExp, (void*)mpCtx, options);
 
 	// And compile it...
@@ -594,4 +635,71 @@ COMMAND cmd_mathpresso_set_options(RXIFRM *frm, void *ctx) {
 	if (num > 0xFFFFu) return RXR_FALSE;
 	MPOptions = (REBCNT)num;
 	return RXR_TRUE;
+}
+
+// A colour channel: rounded and clamped to 0..255 (NaN gives 0).
+static inline REBYTE Channel(double v) {
+	if (!(v > 0.0)) return 0;
+	if (v >= 255.0) return 255;
+	return (REBYTE)(v + 0.5);
+}
+
+// render: evaluates the expression once per pixel of the image, from the
+// image's index to its end. The struct's bytes are copied once into a
+// buffer, followed by the pixel variables; per pixel, x and y are set,
+// r g b to 0 and a to 255, and after the evaluation the colour is written.
+// The struct itself is never written, so any struct of the spec is accepted.
+//
+// Arguments: 1 = expression, 2 = data, 3 = image.
+COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
+	MPExpression *mpe;
+	RXISTRU  stru;
+	REBYTE  *buf, *pix;
+	double  *var;
+	REBCNT   width, start, count, n, col, row;
+	REBYTE   local[512];
+
+	mpe = ARG_MPExpression(1);
+	if (mpe == NULL || mpe->expression == NULL) RETURN_ERROR(ERR_NO_EXPRESSION);
+	if (mpe->pixels == NO_PIXELS) RETURN_ERROR(ERR_NO_PIXELS);
+
+	if (!RXA_STRUCT_INFO(frm, 2, &stru)) RETURN_ERROR(ERR_BAD_STRUCT);
+	if (mpe->struct_id != stru.id)        RETURN_ERROR(ERR_STRUCT_ID);
+	// The same spec, so the same size - but never copy past the gap.
+	if (stru.size > mpe->pixels)          RETURN_ERROR(ERR_STRUCT_ID);
+
+	buf = mpe->bytes_needed <= sizeof(local) ? local : (REBYTE*)malloc(mpe->bytes_needed);
+	if (buf == NULL) RETURN_ERROR("Out of memory!");
+	memset(buf, 0, mpe->bytes_needed);
+	memcpy(buf, stru.data, stru.size);
+	var = (double*)(buf + mpe->pixels);   // x y r g b a
+
+	width = (REBCNT)RXA_IMAGE_WIDTH(frm, 3);
+	start = RXA_IMAGE_INDEX(frm, 3);
+	count = width ? RXA_IMAGE_LEN(frm, 3) : 0;
+	// Not RXA_IMAGE_DATA: its RL_SERIES call passes the image as a void*,
+	// which C++ does not convert to REBSER* implicitly.
+	pix   = (REBYTE*)RL_SERIES((REBSER*)RXA_IMAGE(frm, 3), RXI_SER_DATA) + (REBUPT)start * 4;
+	col   = width ? start % width : 0;
+	row   = width ? start / width : 0;
+
+	Expression *e = (Expression*)mpe->expression;
+	for (n = 0; n < count; n++, pix += 4) {
+		var[0] = (double)col;
+		var[1] = (double)row;
+		var[2] = var[3] = var[4] = 0.0;
+		var[5] = 255.0;
+		e->evaluate(buf);
+		pix[C_R] = Channel(var[2]);
+		pix[C_G] = Channel(var[3]);
+		pix[C_B] = Channel(var[4]);
+		pix[C_A] = Channel(var[5]);
+		if (++col == width) { col = 0; row++; }
+	}
+	if (buf != local) free(buf);
+
+	// The image (at its index) is the result.
+	RXA_ARG(frm, 1)  = RXA_ARG(frm, 3);
+	RXA_TYPE(frm, 1) = RXT_IMAGE;
+	return RXR_VALUE;
 }

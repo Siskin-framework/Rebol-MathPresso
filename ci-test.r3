@@ -593,6 +593,91 @@ near?: func [value expected][
 --rejects-- "A function called with too few arguments"  [mp/compile fx! "r = clamp(x, 1)"]
 --rejects-- "A function called with too many arguments" [mp/compile fx! "r = sign(x, 1)"]
 
+;;=============================================================================
+group "Rendering into an image (context/pixels and render)"
+
+uni!: make struct! [k [double!]]
+pxc: mp/context/pixels uni!
+;; The pixel at a zero-based column and row, as a block (so a 3-tuple and a
+;; 4-tuple do not compare equal by accident).
+px: func [img [image!] p [pair!] /local c][
+    c: pick img p + 1x1
+    reduce [c/1 c/2 c/3 c/4]
+]
+grad: mp/compile :pxc "r = x * 10; g = y * 100; b = k"
+u: make uni! [k: 7.0]
+
+--test-- "context/pixels gives a context" [handle? pxc]
+--test-- "x and y are the pixel's column and row" [
+    img: mp/render :grad u make image! 4x2
+    all [
+        [ 0   0 7 255] = px img 0x0
+        [30   0 7 255] = px img 3x0
+        [10 100 7 255] = px img 1x1
+    ]
+]
+--test-- "render returns the image" [
+    img: make image! 4x2
+    same? img mp/render :grad u img
+]
+--test-- "Struct values are read" [
+    u2: make uni! [k: 42.0]
+    is? px mp/render :grad u2 make image! 1x1 0x0 [0 0 42 255]
+]
+--test-- "Unassigned colour is black, opaque" [
+    is? px mp/render (mp/compile :pxc "k") u make image! 1x1 0x0 [0 0 0 255]
+]
+--test-- "Alpha can be assigned" [
+    is? px mp/render (mp/compile :pxc "a = 128") u make image! 1x1 0x0 [0 0 0 128]
+]
+--test-- "Channels are clamped and rounded" [
+    is? px mp/render (mp/compile :pxc "r = 300; g = -5; b = 1.5") u make image! 1x1 0x0 [255 0 2 255]
+]
+--test-- "NaN gives 0" [
+    is? px mp/render (mp/compile :pxc "var n; r = n; g = 9") u make image! 1x1 0x0 [0 9 0 255]
+]
+--test-- "Starts at the image's index, with the right x and y" [
+    img: make image! 4x2   ;; white
+    mp/render (mp/compile :pxc "r = x; g = y") u skip img 5
+    all [
+        [255 255 255 255] = px img 0x1   ;; before the index - untouched
+        [  1   1   0 255] = px img 1x1
+        [  3   1   0 255] = px img 3x1
+    ]
+]
+--test-- "The struct is not written" [
+    u3: make uni! [k: 1.0]
+    mp/render (mp/compile :pxc "k = 5; r = k") u3 make image! 2x2
+    is? u3/k 1.0
+]
+--test-- "An assigned struct field carries over to the next pixels" [
+    ;; The struct is copied once per render, not once per pixel.
+    img: mp/render (mp/compile :pxc "k = k + 1; r = k") make uni! [k: 0.0] make image! 3x1
+    is? reduce [first px img 0x0  first px img 2x0] [1 3]
+]
+--test-- "A struct which must not be written raw is accepted" [
+    rv!: make struct! [k [double!] v [rebval!]]
+    e: mp/compile mp/context/pixels rv! "r = k"
+    is? px mp/render :e make rv! [k: 9.0 v: "text"] make image! 1x1 0x0 [9 0 0 255]
+]
+--test-- "Constants work with /pixels" [
+    e: mp/compile mp/context/pixels/with uni! [c 5] "r = c"
+    is? first px mp/render :e u make image! 1x1 0x0 5
+]
+--rejects-- "Assigning to x"                  [mp/compile :pxc "x = 1"]
+--rejects-- "Assigning to y"                  [mp/compile :pxc "y = 1"]
+--rejects-- "A field clashing with x"         [mp/context/pixels make struct! [x [double!]]]
+--rejects-- "A constant clashing with r"      [mp/context/pixels/with uni! [r 1]]
+--rejects-- "render of an expression without /pixels" [
+    mp/render (mp/compile uni! "k") u make image! 1x1
+]
+;; The id is a hash of the specification, so an identical spec (even made
+;; anew) is the same struct - this one must differ.
+--rejects-- "render with a struct of another spec" [
+    mp/render :grad make struct! [j [double!]] make image! 1x1
+]
+--rejects-- "eval of a /pixels expression on its struct" [mp/eval :grad u]
+
 print-hline
 ;---------------------------------------------------------------------
 print as-yellow "=== Graph2D example ================================"

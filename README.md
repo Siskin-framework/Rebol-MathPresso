@@ -191,6 +191,37 @@ v: make vector! [decimal! 64 [3.0 4.0 0.0]]   ;; x, y, distance
 mp/eval mp/compile point! "distance = sqrt(x * x + y * y)" v   ;== 5.0
 ```
 
+## Rendering an image
+
+`render` evaluates an expression once for every pixel of an image and writes the colour into it -
+like a pixel shader. The context must be made with `/pixels`, which adds these variables:
+
+| Variable | |
+|---|---|
+| `x` `y` | the pixel's column and row, from 0 (read-only) |
+| `r` `g` `b` | its colour, 0 - 255 (start at 0 for every pixel) |
+| `a` | its alpha, 0 - 255 (starts at 255, opaque) |
+
+The colour is rounded and clamped to 0 - 255. The struct holds the values which change between
+frames (time, zoom, ...): it is read, never written, so changing them needs no new compilation.
+
+```rebol
+frame!: make struct! [t [double!]]
+fx: mp/compile mp/context/pixels frame! {
+var v = sin(x * 0.05 + t) + sin(y * 0.04 - t);
+r = 128 + 127 * sin(v * PI);
+g = 128 + 127 * sin(v * PI + 2);
+b = 128 + 127 * sin(v * PI + 4);
+}
+f: make frame! []
+img: make image! 320x200
+;; every frame:
+f/t: f/t + 0.05
+mp/render :fx f img
+```
+
+`render` starts at the image's position, so `skip img 320` renders from the second row on.
+
 ## When something goes wrong
 
 * An invalid expression is reported as an error with its position (line:column):
@@ -207,7 +238,10 @@ mp/eval mp/compile point! "distance = sqrt(x * x + y * y)" v   ;== 5.0
 * [examples/graph2d.reb](examples/graph2d.reb) - draws a 2D function into an image.
 * [examples/particles.r3](examples/particles.r3) - three particle fountains, with the whole
   simulation in one expression, saved as frames for a video.
-* [examples/mandelbrot.reb](examples/mandelbrot.reb) - draws a Mandelgrot fractal.
+* [examples/mandelbrot.r3](examples/mandelbrot.r3) - the Mandelbrot set, one step of z = z² + c
+  for all pixels in each `eval/each` call.
+* [examples/attractor.r3](examples/attractor.r3) - a Clifford strange attractor drawn by thousands
+  of points, with a density based colouring.
 
 Feel free to [let me know](https://gitter.im/rebol3/community) if something could be improved.
 
@@ -221,6 +255,7 @@ Initialize MPContext handle with given variable names
 * `constants` `[block!]` Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case
 * `/read-only` Make fields read-only, so an expression assigning to them does not compile
 * `fields` `[block!]` Names of double! fields (an array's name covers all its elements). When all are read-only, eval accepts also structs which must not be written raw
+* `/pixels` Add variables x y (the pixel, read-only) and r g b a (its colour, 0-255) for `render`
 
 #### `compile` `:context` `:expression`
 Compile math expression using the given context. Besides MathPresso's built-ins, these functions are available: cbrt exp2 expm1 log1p erf erfc tgamma lgamma sign hash (1 argument), fmod step (2), clamp mix smoothstep (3). A struct field or constant of the same name hides the function.
@@ -240,6 +275,12 @@ Evaluate precompiled math expressions using given variables
 #### `set-options` `:flags`
 MathPresso options used when expression is being compiled
 * `flags` `[integer! none!]` Combination of the kOption* values; none clears them
+
+#### `render` `:expression` `:data` `:image`
+Evaluates an expression for every pixel of an image (from its index) and writes r g b a into it; returns the image
+* `expression` `[handle!]` MPExpression compiled with a context made with /pixels
+* `data` `[struct!]` Values for the struct's variables - read only, the same for all pixels
+* `image` `[image!]` Where x y are its pixel's zero-based column and row; r g b start at 0, a at 255
 
 
 ## Other extension values:

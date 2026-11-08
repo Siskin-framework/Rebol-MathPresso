@@ -42,11 +42,17 @@ c-header: {
 extern REBCNT Handle_MPExpression;
 extern REBCNT Handle_MPContext;
 
+// `pixels`: where the pixel variables (x y r g b a) start - after the
+// struct's own bytes, in the buffer `render` evaluates in. NO_PIXELS when
+// the context was made without /pixels.
+#define NO_PIXELS 0xFFFFFFFFu
+
 typedef struct MPExpression_t {
 	void* expression;  // compiled mathpresso::Expression
 	u32   struct_id;
 	u32   bytes_needed;
 	u32   read_only;     // 1 when it cannot write into the data
+	u32   pixels;        // offset of the pixel variables, or NO_PIXELS
 } MPExpression;
 
 typedef struct MPContext_t {
@@ -54,6 +60,7 @@ typedef struct MPContext_t {
 	u32   struct_id;
 	u32   bytes_needed;
 	u32   read_only;     // 1 when all its variables are read-only
+	u32   pixels;        // offset of the pixel variables, or NO_PIXELS
 } MPContext;
 
 int MPExpression_free(void *hndl);
@@ -76,6 +83,7 @@ commands: [
 		 constants [block!] "Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case"
 		/read-only "Make fields read-only, so an expression assigning to them does not compile"
 		 fields [block!] {Names of double! fields (an array's name covers all its elements). When all are read-only, eval accepts also structs which must not be written raw}
+		/pixels "Add variables x y (the pixel, read-only) and r g b a (its colour, 0-255) for `render`"
 	]
 	compile: [
 		{Compile math expression using the given context. Besides MathPresso's built-ins, these functions are available: cbrt exp2 expm1 log1p erf erfc tgamma lgamma sign hash (1 argument), fmod step (2), clamp mix smoothstep (3). A struct field or constant of the same name hides the function.}
@@ -94,6 +102,12 @@ commands: [
 	set-options: [
 		"MathPresso options used when expression is being compiled"
 		flags [integer! none!] "Combination of the kOption* values; none clears them"
+	]
+	render: [
+		{Evaluates an expression for every pixel of an image (from its index) and writes r g b a into it; returns the image}
+		expression [handle!] "MPExpression compiled with a context made with /pixels"
+		data  [struct!] "Values for the struct's variables - read only, the same for all pixels"
+		image [image!]  "Where x y are its pixel's zero-based column and row; r g b start at 0, a at 255"
 	]
 ]
 

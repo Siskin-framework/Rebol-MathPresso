@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////
 // File: rebol-extension.h
 // Home: https://github.com/Oldes/Rebol3/
-// Date: 30-Oct-2026/13:12:24
+// Date: 7-Nov-2026/20:57:07
 // Note: This file is amalgamated from these sources:
 //
 //       reb-c.h
@@ -76,9 +76,9 @@
 #define HAS_BOOL // don't redefine BOOL in objective-c code
 #endif
 
-#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) \
+ || (defined(_MSC_VER) && _MSC_VER >= 1600)
 /* C-code types: use C99 */
-
 #include <stdint.h>
 
 typedef int8_t			i8;
@@ -143,9 +143,9 @@ typedef unsigned long long u64;
 #define I64_C(c) c ## LL
 #define U64_C(c) c ## ULL
 #endif
-#ifdef __LLP64__
-typedef long long		REBIPT;		// integral counterpart of void*
-typedef unsigned long long	REBUPT;		// unsigned counterpart of void*
+#if defined(__LLP64__) || defined(_WIN64)
+typedef long long		    REBIPT; // integral counterpart of void*
+typedef unsigned long long	REBUPT; // unsigned counterpart of void*
 #else
 typedef long			REBIPT;		// integral counterpart of void*
 typedef unsigned long	REBUPT;		// unsigned counterpart of void*
@@ -158,6 +158,10 @@ typedef unsigned long	REBUPT;		// unsigned counterpart of void*
 
 #endif
 /* C-code types */
+
+// REBUPT/REBIPT carry pointers through the extension API (RL_Series...)
+typedef char REBUPT_holds_a_pointer[(sizeof(REBUPT) == sizeof(void*)) ? 1 : -1];
+typedef char REBIPT_holds_a_pointer[(sizeof(REBIPT) == sizeof(void*)) ? 1 : -1];
 
 #define MAX_U32 U32_C(0xffffffff)
 #define MAX_U64 U64_C(0xffffffffffffffff)
@@ -433,7 +437,7 @@ typedef void(*CFUNC)(void *);
 
 #ifdef ENDIAN_BIG
 
-#define TO_RGBA_COLOR(r,g,b,a) (REBCNT)((r)<<24 | (g)<<16 | (b)<<8 |  (a))
+#define TO_RGBA_COLOR(r,g,b,a) ((REBCNT)(r)<<24 | (REBCNT)(g)<<16 | (REBCNT)(b)<<8 | (REBCNT)(a))
 
 //ARGB pixelformat used on big endian systems
 #define C_A 0
@@ -441,11 +445,11 @@ typedef void(*CFUNC)(void *);
 #define C_G 2
 #define C_B 3
 
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (r)<<16 | (g)<<8 |  (b))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(r)<<16 | (REBCNT)(g)<<8 | (REBCNT)(b))
 
 #else
 
-#define TO_RGBA_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (b)<<16 | (g)<<8 |  (r))
+#define TO_RGBA_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(b)<<16 | (REBCNT)(g)<<8 | (REBCNT)(r))
 
 //we use RGBA pixelformat on Android
 #ifdef TO_ANDROID_ARM
@@ -453,14 +457,14 @@ typedef void(*CFUNC)(void *);
 #define C_G 1
 #define C_B 2
 #define C_A 3
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (b)<<16 | (g)<<8 |  (r))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(b)<<16 | (REBCNT)(g)<<8 | (REBCNT)(r))
 #else
 //BGRA pixelformat is used on Windows
 #define C_B 0
 #define C_G 1
 #define C_R 2
 #define C_A 3
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (r)<<16 | (g)<<8 |  (b))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(r)<<16 | (REBCNT)(g)<<8 | (REBCNT)(b))
 #endif
 
 #endif
@@ -902,8 +906,8 @@ enum encoding_opts {
 ************************************************************************
 **
 **  Title: Extension Types (Isolators)
-**  Build: 3.22.12
-**  Date:  28-Oct-2026
+**  Build: 3.22.14
+**  Date:  7-Nov-2026
 **  File:  ext-types.h
 **
 **  AUTO-GENERATED FILE - Do not modify. (From: make-boot.reb)
@@ -1534,6 +1538,7 @@ enum {
 	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
 	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
 	SER_SIZEP= 1<<11,   // Series is protected from length modification only (e.g. sliced series)
+	SER_HASH = 1<<12,   // Block series has a hash table of its values in the series link (hash!)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -1563,6 +1568,14 @@ enum {
 #define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
 #define IS_FIXED_SIZE(s)     SERIES_GET_FLAG(s, SER_LOCK|SER_SIZEP)
 #define IS_FIXED_SIZE_VALUE(v) SERIES_GET_FLAG(VAL_SERIES(v), SER_LOCK|SER_SIZEP)
+#define IS_HASH_SERIES(s)    SERIES_GET_FLAG(s, SER_HASH)
+#define SET_HASH_SERIES(s,h) ((s)->series = (h), SERIES_SET_FLAG(s, SER_HASH))
+// Drops the hash table of a modified series (it is rebuilt when needed again)
+#define DROP_SERIES_HASH(s)  do { if (IS_HASH_SERIES(s)) { SERIES_CLR_FLAG(s, SER_HASH); (s)->series = NULL; } } while (0)
+// Number of block values already added to the hash table (stored in the table's size field)
+#define HASH_COUNT(hser)     ((hser)->size)
+// Number of live (not removed) entries of a map (stored in its hash table's size field)
+#define MAP_LIVE_COUNT(hser) ((hser)->size)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
 #define TRAP_FIXED_SIZE(s) if (IS_FIXED_SIZE(s)) Trap0(RE_FIXED_SIZED_SERIES)
@@ -2547,7 +2560,7 @@ typedef struct Reb_All {
 	} data;
 };
 
-#define ANY_SERIES(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_LIT_PATH)
+#define ANY_SERIES(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_HASH)
 #define ANY_STR(v)			(VAL_TYPE(v) >= REB_STRING && VAL_TYPE(v) <= REB_TAG)
 #define ANY_BINSTR(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_TAG)
 #define ANY_BLOCK(v)		(VAL_TYPE(v) >= REB_BLOCK  && VAL_TYPE(v) <= REB_HASH)
@@ -2560,7 +2573,7 @@ typedef struct Reb_All {
 #define ANY_NUMBER(v)	    (VAL_TYPE(v) >= REB_INTEGER && VAL_TYPE(v) <= REB_MONEY)
 #define ANY_SCALAR(v)	    (VAL_TYPE(v) >= REB_UNSET  && VAL_TYPE(v) <= REB_DATE)
 
-#define ANY_BLOCK_TYPE(t)   (t >= REB_BLOCK   && t <= REB_LIT_PATH)
+#define ANY_BLOCK_TYPE(t)   (t >= REB_BLOCK   && t <= REB_HASH)
 #define ANY_STR_TYPE(t)     (t >= REB_STRING  && t <= REB_TAG)
 
 #pragma pack()
@@ -2579,8 +2592,8 @@ typedef struct Reb_All {
 ************************************************************************
 **
 **  Title: Event Types
-**  Build: 3.22.12
-**  Date:  28-Oct-2026
+**  Build: 3.22.14
+**  Date:  7-Nov-2026
 **  File:  reb-evtypes.h
 **
 **  AUTO-GENERATED FILE - Do not modify. (From: make-boot.reb)
@@ -3569,8 +3582,8 @@ enum {
 ************************************************************************
 **
 **  Title: REBOL Host and Extension API
-**  Build: 3.22.12
-**  Date:  28-Oct-2026
+**  Build: 3.22.14
+**  Date:  7-Nov-2026
 **  File:  reb-lib.reb
 **
 **  AUTO-GENERATED FILE - Do not modify. (From: make-reb-lib.reb)
@@ -3582,7 +3595,7 @@ enum {
 // for compatiblity with the reb-lib DLL (using RL_Version.)
 #define RL_VER 3
 #define RL_REV 22
-#define RL_UPD 12
+#define RL_UPD 14
 
 // Bumped ONLY when an existing RL_API function's signature/semantics
 // change in a way that breaks old extension binaries calling it - i.e.
