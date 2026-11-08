@@ -19,6 +19,7 @@ Rebol [
 	}
 ]
 
+import 'pugl
 mp: import 'mathpresso
 ui: do %../../Rebol-Pugl/widgets.reb
 
