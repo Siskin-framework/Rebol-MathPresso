@@ -201,6 +201,7 @@ like a pixel shader. The context must be made with `/pixels`, which adds these v
 | `x` `y` | the pixel's column and row, from 0 (read-only) |
 | `r` `g` `b` | its colour, 0 - 255 (start at 0 for every pixel) |
 | `a` | its alpha, 0 - 255 (starts at 255, opaque) |
+| `buf` | its value kept by `render/with` (0 without it) |
 
 The colour is rounded and clamped to 0 - 255. The struct holds the values which change between
 frames (time, zoom, ...): it is read, never written, so changing them needs no new compilation.
@@ -222,6 +223,25 @@ mp/render :fx f img
 
 `render` starts at the image's position, so `skip img 320` renders from the second row on.
 
+### A value for every pixel
+
+`render/with` takes a vector of 64-bit decimals, one for every pixel. Before a pixel is evaluated,
+its value is read into `buf`, and after it `buf` is written back - so it is kept from one frame to
+the next. Trails, glows and densities which fade away are then one line:
+
+```rebol
+dens: make vector! [float64! 76800]     ;; 320x240
+fade: mp/compile mp/context/pixels frame! {
+buf = buf * 0.9;                        // what is not added to again fades
+r = min(255, buf * 10);
+}
+;; every frame: add to `dens` (e.g. hits of points), then
+mp/render/with :fade f img dens
+```
+
+See [examples/attractor-anim.r3](examples/attractor-anim.r3), where Rebol counts the hits of
+points into such a vector and `render/with` fades and colours it.
+
 ## When something goes wrong
 
 * An invalid expression is reported as an error with its position (line:column):
@@ -240,8 +260,14 @@ mp/render :fx f img
   simulation in one expression, saved as frames for a video.
 * [examples/mandelbrot.r3](examples/mandelbrot.r3) - the Mandelbrot set, one step of z = z² + c
   for all pixels in each `eval/each` call.
+* [examples/shader.r3](examples/shader.r3) - animated pixel effects (plasma, tunnel, metaballs,
+  rings, domain warping, the graph2d equation, a Julia set) drawn by `render` in a [Rebol/Pugl](https://github.com/Siskin-framework/Rebol-Pugl)
+  window, with controls made by its `widgets.reb`.
 * [examples/attractor.r3](examples/attractor.r3) - a Clifford strange attractor drawn by thousands
   of points, with a density based colouring.
+* [examples/attractor-anim.r3](examples/attractor-anim.r3) - the same attractor, animated in a
+  Rebol/Pugl window: its parameters drift, the expression is compiled again every frame, and
+  `render/with` keeps the glowing, fading trails.
 
 Feel free to [let me know](https://gitter.im/rebol3/community) if something could be improved.
 
@@ -255,7 +281,7 @@ Initialize MPContext handle with given variable names
 * `constants` `[block!]` Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case
 * `/read-only` Make fields read-only, so an expression assigning to them does not compile
 * `fields` `[block!]` Names of double! fields (an array's name covers all its elements). When all are read-only, eval accepts also structs which must not be written raw
-* `/pixels` Add variables x y (the pixel, read-only) and r g b a (its colour, 0-255) for `render`
+* `/pixels` Add variables x y (the pixel, read-only), r g b a (its colour, 0-255) and buf (its value of render/with) for `render`
 
 #### `compile` `:context` `:expression`
 Compile math expression using the given context. Besides MathPresso's built-ins, these functions are available: cbrt exp2 expm1 log1p erf erfc tgamma lgamma sign hash (1 argument), fmod step (2), clamp mix smoothstep (3). A struct field or constant of the same name hides the function.
@@ -281,6 +307,8 @@ Evaluates an expression for every pixel of an image (from its index) and writes 
 * `expression` `[handle!]` MPExpression compiled with a context made with /pixels
 * `data` `[struct!]` Values for the struct's variables - read only, the same for all pixels
 * `image` `[image!]` Where x y are its pixel's zero-based column and row; r g b start at 0, a at 255
+* `/with` Keep a value for every pixel, as variable buf (else it is 0)
+* `buffer` `[vector!]` 64-bit decimals, one per pixel from the image's index - read before and written after each evaluation
 
 
 ## Other extension values:

@@ -219,4 +219,8 @@ eggs: [
 		name: %mathpresso-shared-arm64
 		:link-shared :target-arm64 :r3-extension
 	]
+	"Update gits" [
+		cmd %asmjit     "git pull"
+		cmd %mathpresso "git pull"
+	]
 ]

@@ -593,6 +593,15 @@ near?: func [value expected][
 --rejects-- "A function called with too few arguments"  [mp/compile fx! "r = clamp(x, 1)"]
 --rejects-- "A function called with too many arguments" [mp/compile fx! "r = sign(x, 1)"]
 
+;; MathPresso's optimizer kept a variable which held a constant as that
+;; constant even after a non-constant value was assigned to it.
+--test-- "A variable holding a constant can be assigned a non-constant value" [
+    is? mp/eval mp/compile fx! "var n = 0; n = x; r = n" make fx! [x: 3.0] 3.0
+]
+--test-- "... also when the new value is computed from the old one" [
+    is? mp/eval mp/compile fx! "var n = 1; n = n + x; r = n" make fx! [x: 3.0] 4.0
+]
+
 ;;=============================================================================
 group "Rendering into an image (context/pixels and render)"
 
@@ -664,6 +673,33 @@ u: make uni! [k: 7.0]
     e: mp/compile mp/context/pixels/with uni! [c 5] "r = c"
     is? first px mp/render :e u make image! 1x1 0x0 5
 ]
+;; render/with keeps a value for every pixel: `buf`.
+bufx: mp/compile :pxc "buf = buf * 0.5 + x; r = buf"
+--test-- "render/with reads and writes buf" [
+    vals: #(float64! [10.0 20.0 30.0 40.0 50.0 60.0 70.0 80.0])
+    img: mp/render/with :bufx u make image! 4x2 vals
+    all [
+        [5.0 11.0 17.0 23.0 25.0 31.0 37.0 43.0] = to block! vals
+        11 = first px img 1x0
+    ]
+]
+--test-- "render/with starts at the image's and the vector's index" [
+    vals: #(float64! [10.0 20.0 30.0 40.0 50.0 60.0 70.0 80.0])
+    mp/render/with :bufx u skip make image! 4x2 6 skip vals 2
+    ;; pixels 6 and 7 (x = 2 and 3) use the values 3 and 4:
+    ;; 30 * 0.5 + 2 and 40 * 0.5 + 3
+    is? to block! vals [10.0 20.0 17.0 23.0 50.0 60.0 70.0 80.0]
+]
+--test-- "Without /with buf is 0" [
+    is? first px mp/render (mp/compile :pxc "r = buf + 3") u make image! 1x1 0x0 3
+]
+--rejects-- "render/with a vector shorter than the image" [
+    mp/render/with :bufx u make image! 4x2 make vector! [float64! 7]
+]
+--rejects-- "render/with a vector of 32-bit decimals" [
+    mp/render/with :bufx u make image! 4x2 make vector! [float32! 8]
+]
+--rejects-- "A field clashing with buf" [mp/context/pixels make struct! [buf [double!]]]
 --rejects-- "Assigning to x"                  [mp/compile :pxc "x = 1"]
 --rejects-- "Assigning to y"                  [mp/compile :pxc "y = 1"]
 --rejects-- "A field clashing with x"         [mp/context/pixels make struct! [x [double!]]]

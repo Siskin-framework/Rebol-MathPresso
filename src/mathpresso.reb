@@ -83,7 +83,7 @@ commands: [
 		 constants [block!] "Name/number pairs, e.g. [gain 2.5 offset: 10]; use a ref! (@Gain) to keep the exact case"
 		/read-only "Make fields read-only, so an expression assigning to them does not compile"
 		 fields [block!] {Names of double! fields (an array's name covers all its elements). When all are read-only, eval accepts also structs which must not be written raw}
-		/pixels "Add variables x y (the pixel, read-only) and r g b a (its colour, 0-255) for `render`"
+		/pixels "Add variables x y (the pixel, read-only), r g b a (its colour, 0-255) and buf (its value of render/with) for `render`"
 	]
 	compile: [
 		{Compile math expression using the given context. Besides MathPresso's built-ins, these functions are available: cbrt exp2 expm1 log1p erf erfc tgamma lgamma sign hash (1 argument), fmod step (2), clamp mix smoothstep (3). A struct field or constant of the same name hides the function.}
@@ -108,6 +108,8 @@ commands: [
 		expression [handle!] "MPExpression compiled with a context made with /pixels"
 		data  [struct!] "Values for the struct's variables - read only, the same for all pixels"
 		image [image!]  "Where x y are its pixel's zero-based column and row; r g b start at 0, a at 255"
+		/with "Keep a value for every pixel, as variable buf (else it is 0)"
+		 buffer [vector!] "64-bit decimals, one per pixel from the image's index - read before and written after each evaluation"
 	]
 ]
 

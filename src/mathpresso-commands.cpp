@@ -50,6 +50,7 @@ static const char* ERR_NOT_DOUBLES   = "Command needs a vector with double value
 static const char* ERR_SHORT_DATA    = "Insufficient size of input data!";
 static const char* ERR_NOT_STRUCTS   = "/each needs a vector of structs!";
 static const char* ERR_BAD_OPTIONS   = "Compilation flags must be in range 0 - 65535!";
+static const char* ERR_SHORT_BUFFER  = "render/with needs a vector of 64-bit decimals with a value for every pixel!";
 static const char* ERR_NO_PIXELS     = "render needs an expression compiled with a context made with /pixels!";
 
 // Receives messages from MathPresso's parser, optimizer and compiler.
@@ -352,10 +353,10 @@ static const char* Check_Read_Only(const ReadOnlyList *ro, RXISTRU *stru) {
 }
 
 // The pixel variables of a context made with /pixels, in this order, after
-// the struct's own bytes: the pixel's column and row (read-only), then its
-// colour.
-static const char* const PixelVars[] = {"x", "y", "r", "g", "b", "a"};
-#define PIXEL_VARS 6
+// the struct's own bytes: the pixel's column and row (read-only), its
+// colour, and its value in the buffer of render/with.
+static const char* const PixelVars[] = {"x", "y", "r", "g", "b", "a", "buf"};
+#define PIXEL_VARS 7
 
 // Adds the pixel variables at `offset`. Returns FALSE with the message in
 // MPError when a name is already taken by a field of the struct.
@@ -650,12 +651,16 @@ static inline REBYTE Channel(double v) {
 // r g b to 0 and a to 255, and after the evaluation the colour is written.
 // The struct itself is never written, so any struct of the spec is accepted.
 //
-// Arguments: 1 = expression, 2 = data, 3 = image.
+// With /with, `buf` is read from the vector (one double per pixel, from the
+// vector's index) before the evaluation and written back after it - a value
+// kept for every pixel from one call to the next. Without it, `buf` is 0.
+//
+// Arguments: 1 = expression, 2 = data, 3 = image, 4 = /with, 5 = buffer.
 COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
 	MPExpression *mpe;
 	RXISTRU  stru;
-	REBYTE  *buf, *pix;
-	double  *var;
+	REBYTE  *mem, *pix;
+	double  *var, *vals = NULL;
 	REBCNT   width, start, count, n, col, row;
 	REBYTE   local[512];
 
@@ -668,15 +673,26 @@ COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
 	// The same spec, so the same size - but never copy past the gap.
 	if (stru.size > mpe->pixels)          RETURN_ERROR(ERR_STRUCT_ID);
 
-	buf = mpe->bytes_needed <= sizeof(local) ? local : (REBYTE*)malloc(mpe->bytes_needed);
-	if (buf == NULL) RETURN_ERROR("Out of memory!");
-	memset(buf, 0, mpe->bytes_needed);
-	memcpy(buf, stru.data, stru.size);
-	var = (double*)(buf + mpe->pixels);   // x y r g b a
-
 	width = (REBCNT)RXA_IMAGE_WIDTH(frm, 3);
 	start = RXA_IMAGE_INDEX(frm, 3);
 	count = width ? RXA_IMAGE_LEN(frm, 3) : 0;
+
+	if (RXA_REF(frm, 4)) {
+		REBSER *ser   = RXA_VECTOR_SERIES(frm, 5);
+		REBCNT  index = RXA_VECTOR_INDEX(frm, 5);
+		REBCNT  tail  = SERIES_TAIL(ser);
+		if (RXI_VECTOR_TYPE(RXA_VECTOR_INFO(frm, 5)) != VTSF64) RETURN_ERROR(ERR_SHORT_BUFFER);
+		// The index may be past the tail (the vector was shortened since).
+		if (index > tail || tail - index < count)               RETURN_ERROR(ERR_SHORT_BUFFER);
+		vals = (double*)SERIES_SKIP(ser, index);
+	}
+
+	mem = mpe->bytes_needed <= sizeof(local) ? local : (REBYTE*)malloc(mpe->bytes_needed);
+	if (mem == NULL) RETURN_ERROR("Out of memory!");
+	memset(mem, 0, mpe->bytes_needed);
+	memcpy(mem, stru.data, stru.size);
+	var = (double*)(mem + mpe->pixels);   // x y r g b a buf
+
 	// Not RXA_IMAGE_DATA: its RL_SERIES call passes the image as a void*,
 	// which C++ does not convert to REBSER* implicitly.
 	pix   = (REBYTE*)RL_SERIES((REBSER*)RXA_IMAGE(frm, 3), RXI_SER_DATA) + (REBUPT)start * 4;
@@ -689,14 +705,16 @@ COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
 		var[1] = (double)row;
 		var[2] = var[3] = var[4] = 0.0;
 		var[5] = 255.0;
-		e->evaluate(buf);
+		var[6] = vals ? vals[n] : 0.0;
+		e->evaluate(mem);
 		pix[C_R] = Channel(var[2]);
 		pix[C_G] = Channel(var[3]);
 		pix[C_B] = Channel(var[4]);
 		pix[C_A] = Channel(var[5]);
+		if (vals) vals[n] = var[6];
 		if (++col == width) { col = 0; row++; }
 	}
-	if (buf != local) free(buf);
+	if (mem != local) free(mem);
 
 	// The image (at its index) is the result.
 	RXA_ARG(frm, 1)  = RXA_ARG(frm, 3);
