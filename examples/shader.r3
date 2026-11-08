@@ -125,6 +125,20 @@ r = 255 * mix(0.05, 0.95, p * p);
 g = 255 * mix(0.10, 0.75, p) * mix(0.6, 1.0, k);
 b = 255 * mix(0.30, 0.40, p * k);
 }
+	'Graph {
+// Graphing a 2D equation (examples/graph2d.reb) - its `n` goes up and down
+// in time, and the pointer's horizontal position adds to it.
+var u = (x - width / 2) / height * 16 / zoom;
+var v = (y - height / 2) / height * 16 / zoom;
+var rad = sqrt(u * u + v * v);
+var theta = atan2(v, u);
+var n = 5 + 3 * sin(t * 0.4) + (mx / width - 0.5) * 4;
+var val = sin(n * cos(rad) + 5 * theta);
+var bw = (val + 1) * 127.5;
+r = bw;
+g = bw;
+b = bw;
+}
 	'Julia julia 48
 ]
 
@@ -202,23 +216,23 @@ foreach [name src] effects [
 	y: y + 20
 ]
 
-speed-label: heading "" 168
-speed-slider: ui/make-slider/value win 12x186 180x18 0.5
+speed-label: heading "" 188
+speed-slider: ui/make-slider/value win 12x206 180x18 0.5
 speed-slider/action: func [s][
 	speed: s/value * 2                       ;; 0 .. 2, 1.0 in the middle
 	speed-label/text: ajoin ["Speed: " round/to speed 0.01]
 ]
 
-zoom-label: heading "" 212
-zoom-slider: ui/make-slider/value win 12x230 180x18 0.5
+zoom-label: heading "" 232
+zoom-slider: ui/make-slider/value win 12x250 180x18 0.5
 zoom-slider/action: func [s][
 	f/zoom: 0.25 * (16 ** s/value)           ;; 0.25 .. 4, 1.0 in the middle
 	zoom-label/text: ajoin ["Zoom: " round/to f/zoom 0.01]
 	dirty?: true
 ]
 
-res-label: heading "" 256
-res-slider: ui/make-slider/value/steps win 12x274 180x18 0.5 4
+res-label: heading "" 276
+res-slider: ui/make-slider/value/steps win 12x294 180x18 0.5 4
 res-slider/action: func [s /local new][
 	new: pick sizes 1 + to integer! round s/value * 4
 	res-label/text: ajoin ["Resolution: " to integer! new/x "x" to integer! new/y]
@@ -227,13 +241,13 @@ res-slider/action: func [s /local new][
 ;; the labels show the values from the start
 foreach s reduce [speed-slider zoom-slider res-slider][s/action s]
 
-pause: ui/make-button/toggle win "Pause" 12x304 70x0
+pause: ui/make-button/toggle win "Pause" 12x324 70x0
 pause/action: func [b][ui/set-text b either b/on? ["Play"]["Pause"]]
-restart: ui/make-button win "Restart" 90x304 0x0
+restart: ui/make-button win "Restart" 90x324 0x0
 restart/action: func [b][f/t: 0.0  dirty?: true]
 
-info:  heading "" 340
-info2: heading "" 358
+info:  heading "" 360
+info2: heading "" 378
 
 rebuild
 
