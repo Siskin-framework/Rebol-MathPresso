@@ -33,14 +33,20 @@ ui:    do %../../Rebol-Pugl/widgets.reb
 
 ;; Shared by the sound and the scope. `p0` and `start` are where the current
 ;; chunk of samples begins: the phase in cycles and the sample's number.
+;;
+;; The modulation and the volume go from their value at the chunk's start
+;; (mod0, vol0) to the one set by the sliders (mod1, vol1) gradually, sample
+;; by sample - a jump between two chunks would be heard as a click.
 voice!: make struct! [
 	p0    [double!]
 	start [double!]
 	freq  [double!]   ;; Hz
-	mod   [double!]   ;; 0 .. 1, what it does is up to the voice
-	vol   [double!]
+	mod0  [double!]   ;; 0 .. 1, what it does is up to the voice
+	mod1  [double!]
+	vol0  [double!]
+	vol1  [double!]
 ]
-v: make voice! [freq: 220.0 mod: 0.5 vol: 0.3]
+v: make voice! [freq: 220.0 mod0: 0.5 mod1: 0.5 vol0: 0.3 vol1: 0.3]
 
 ;; Each voice sets `s`, the sound from -1 to 1, from `p` and `time`. The
 ;; phase only grows, so a voice using `p * 1.5` stays smooth when the pitch
@@ -77,15 +83,17 @@ voice: 'Organ
 sound-head: {
 var p = p0 + freq * x / rate;
 var time = (start + x) / rate;
+var mod = mod0 + (mod1 - mod0) * x / chunk;
 }
 sound-tail: {
-buf = vol * s;
+buf = (vol0 + (vol1 - vol0) * x / chunk) * s;
 }
-;; Column `x` of the scope shows three cycles - from a whole one, so the
-;; picture stands still.
+;; The scope shows 20 ms, so more cycles of a higher note - starting at a
+;; whole cycle, so the picture stands still.
 scope-head: {
-var p = floor(p0) + x / width * 3;
-var time = start / rate;
+var p = floor(p0) + x / width * freq * 0.02;
+var time = start / rate + x / width * 0.02;
+var mod = mod1;
 }
 scope-tail: {
 // Lit near the value; what is not lit again fades like a phosphor.
@@ -118,7 +126,7 @@ rebuild: does [
 	t: now/precise
 	body: voices/:voice
 	sound-fx: mp/compile
-		mp/context/pixels/with voice! compose [rate (rate)]
+		mp/context/pixels/with voice! compose [rate (rate) chunk (chunk)]
 		ajoin [sound-head body sound-tail]
 	scope-fx: mp/compile
 		mp/context/pixels/with voice! compose [
@@ -136,6 +144,8 @@ fill: does [
 	audio/write stream samples
 	v/p0:    v/p0 + (v/freq * chunk / rate)
 	v/start: v/start + chunk
+	v/mod0:  v/mod1
+	v/vol0:  v/vol1
 ]
 
 ;;-- window ---------------------------------------------------------------------
@@ -188,7 +198,7 @@ pitch-slider/action: func [s][
 mod-label: heading "" 172
 mod-slider: ui/make-slider/value win 12x190 180x18 0.5
 mod-slider/action: func [s][
-	v/mod: s/value
+	v/mod1: s/value
 	mod-label/text: ajoin ["Modulation: " to integer! round s/value * 100 "%"]
 ]
 
@@ -197,13 +207,13 @@ vol-label: heading "" 216
 vol-slider: ui/make-slider/value win 12x234 180x18 0.5
 vol-slider/action: func [s][
 	volume: s/value * 0.6
-	unless mute/on? [v/vol: volume]
+	unless mute/on? [v/vol1: volume]
 	vol-label/text: ajoin ["Volume: " to integer! round s/value * 100 "%"]
 ]
 
 mute: ui/make-button/toggle win "Mute" 12x264 70x0
 mute/action: func [b][
-	v/vol: either b/on? [0.0][volume]
+	v/vol1: either b/on? [0.0][volume]
 	ui/set-text b either b/on? ["Unmute"]["Mute"]
 ]
 foreach s reduce [pitch-slider mod-slider vol-slider][s/action s]
