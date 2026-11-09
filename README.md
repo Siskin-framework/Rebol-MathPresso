@@ -268,6 +268,10 @@ points into such a vector and `render/with` fades and colours it.
 * [examples/attractor-anim.r3](examples/attractor-anim.r3) - the same attractor, animated in a
   Rebol/Pugl window: its parameters drift, the expression is compiled again every frame, and
   `render/with` keeps the glowing, fading trails.
+* [examples/synth.r3](examples/synth.r3) - a small synthesizer: each voice is one formula,
+  compiled for the sound (`render/with` into a `float32!` vector fed to a
+  [Rebol/MiniAudio](https://github.com/Oldes/Rebol-MiniAudio) stream) and for an oscilloscope
+  with a fading phosphor.
 
 Feel free to [let me know](https://gitter.im/rebol3/community) if something could be improved.
 
