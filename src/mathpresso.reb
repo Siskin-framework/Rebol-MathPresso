@@ -109,7 +109,7 @@ commands: [
 		data  [struct!] "Values for the struct's variables - read only, the same for all pixels"
 		image [image!]  "Where x y are its pixel's zero-based column and row; r g b start at 0, a at 255"
 		/with "Keep a value for every pixel, as variable buf (else it is 0)"
-		 buffer [vector!] "64-bit decimals, one per pixel from the image's index - read before and written after each evaluation"
+		 buffer [vector!] "32 or 64-bit decimals, one per pixel from the image's index - read before and written after each evaluation"
 	]
 ]
 

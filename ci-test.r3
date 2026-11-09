@@ -696,8 +696,13 @@ bufx: mp/compile :pxc "buf = buf * 0.5 + x; r = buf"
 --rejects-- "render/with a vector shorter than the image" [
     mp/render/with :bufx u make image! 4x2 make vector! [float64! 7]
 ]
---rejects-- "render/with a vector of 32-bit decimals" [
-    mp/render/with :bufx u make image! 4x2 make vector! [float32! 8]
+--test-- "render/with a vector of 32-bit decimals" [
+    vals: #(float32! [10.0 20.0 30.0 40.0 50.0 60.0 70.0 80.0])
+    mp/render/with :bufx u make image! 4x2 vals
+    is? to block! vals [5.0 11.0 17.0 23.0 25.0 31.0 37.0 43.0]
+]
+--rejects-- "render/with a vector of integers" [
+    mp/render/with :bufx u make image! 4x2 make vector! [int16! 8]
 ]
 --rejects-- "A field clashing with buf" [mp/context/pixels make struct! [buf [double!]]]
 --rejects-- "Assigning to x"                  [mp/compile :pxc "x = 1"]

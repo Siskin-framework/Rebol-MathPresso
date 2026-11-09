@@ -225,7 +225,7 @@ mp/render :fx f img
 
 ### A value for every pixel
 
-`render/with` takes a vector of 64-bit decimals, one for every pixel. Before a pixel is evaluated,
+`render/with` takes a vector of 64 or 32-bit decimals, one for every pixel. Before a pixel is evaluated,
 its value is read into `buf`, and after it `buf` is written back - so it is kept from one frame to
 the next. Trails, glows and densities which fade away are then one line:
 
@@ -308,7 +308,7 @@ Evaluates an expression for every pixel of an image (from its index) and writes 
 * `data` `[struct!]` Values for the struct's variables - read only, the same for all pixels
 * `image` `[image!]` Where x y are its pixel's zero-based column and row; r g b start at 0, a at 255
 * `/with` Keep a value for every pixel, as variable buf (else it is 0)
-* `buffer` `[vector!]` 64-bit decimals, one per pixel from the image's index - read before and written after each evaluation
+* `buffer` `[vector!]` 32 or 64-bit decimals, one per pixel from the image's index - read before and written after each evaluation
 
 
 ## Other extension values:

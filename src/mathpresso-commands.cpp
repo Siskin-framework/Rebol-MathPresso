@@ -50,7 +50,7 @@ static const char* ERR_NOT_DOUBLES   = "Command needs a vector with double value
 static const char* ERR_SHORT_DATA    = "Insufficient size of input data!";
 static const char* ERR_NOT_STRUCTS   = "/each needs a vector of structs!";
 static const char* ERR_BAD_OPTIONS   = "Compilation flags must be in range 0 - 65535!";
-static const char* ERR_SHORT_BUFFER  = "render/with needs a vector of 64-bit decimals with a value for every pixel!";
+static const char* ERR_SHORT_BUFFER  = "render/with needs a vector of 32 or 64-bit decimals with a value for every pixel!";
 static const char* ERR_NO_PIXELS     = "render needs an expression compiled with a context made with /pixels!";
 
 // Receives messages from MathPresso's parser, optimizer and compiler.
@@ -651,9 +651,11 @@ static inline REBYTE Channel(double v) {
 // r g b to 0 and a to 255, and after the evaluation the colour is written.
 // The struct itself is never written, so any struct of the spec is accepted.
 //
-// With /with, `buf` is read from the vector (one double per pixel, from the
+// With /with, `buf` is read from the vector (one value per pixel, from the
 // vector's index) before the evaluation and written back after it - a value
 // kept for every pixel from one call to the next. Without it, `buf` is 0.
+// The vector may be of 64 or 32-bit decimals - float32! is what audio and
+// other libraries usually take, so it needs no conversion afterwards.
 //
 // Arguments: 1 = expression, 2 = data, 3 = image, 4 = /with, 5 = buffer.
 COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
@@ -661,6 +663,7 @@ COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
 	RXISTRU  stru;
 	REBYTE  *mem, *pix;
 	double  *var, *vals = NULL;
+	float   *vals32 = NULL;
 	REBCNT   width, start, count, n, col, row;
 	REBYTE   local[512];
 
@@ -681,10 +684,12 @@ COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
 		REBSER *ser   = RXA_VECTOR_SERIES(frm, 5);
 		REBCNT  index = RXA_VECTOR_INDEX(frm, 5);
 		REBCNT  tail  = SERIES_TAIL(ser);
-		if (RXI_VECTOR_TYPE(RXA_VECTOR_INFO(frm, 5)) != VTSF64) RETURN_ERROR(ERR_SHORT_BUFFER);
+		REBCNT  type  = RXI_VECTOR_TYPE(RXA_VECTOR_INFO(frm, 5));
+		if (type != VTSF64 && type != VTSF32)     RETURN_ERROR(ERR_SHORT_BUFFER);
 		// The index may be past the tail (the vector was shortened since).
-		if (index > tail || tail - index < count)               RETURN_ERROR(ERR_SHORT_BUFFER);
-		vals = (double*)SERIES_SKIP(ser, index);
+		if (index > tail || tail - index < count) RETURN_ERROR(ERR_SHORT_BUFFER);
+		if (type == VTSF64) vals   = (double*)SERIES_SKIP(ser, index);
+		else                vals32 = (float*) SERIES_SKIP(ser, index);
 	}
 
 	mem = mpe->bytes_needed <= sizeof(local) ? local : (REBYTE*)malloc(mpe->bytes_needed);
@@ -705,13 +710,14 @@ COMMAND cmd_mathpresso_render(RXIFRM *frm, void *ctx) {
 		var[1] = (double)row;
 		var[2] = var[3] = var[4] = 0.0;
 		var[5] = 255.0;
-		var[6] = vals ? vals[n] : 0.0;
+		var[6] = vals ? vals[n] : vals32 ? (double)vals32[n] : 0.0;
 		e->evaluate(mem);
 		pix[C_R] = Channel(var[2]);
 		pix[C_G] = Channel(var[3]);
 		pix[C_B] = Channel(var[4]);
 		pix[C_A] = Channel(var[5]);
-		if (vals) vals[n] = var[6];
+		if (vals)        vals[n]   = var[6];
+		else if (vals32) vals32[n] = (float)var[6];
 		if (++col == width) { col = 0; row++; }
 	}
 	if (mem != local) free(mem);
